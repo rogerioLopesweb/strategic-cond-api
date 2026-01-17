@@ -16,6 +16,7 @@ const login = async (req, res) => {
 
         // 2. Mock de dados (Simulação de Banco)
         const usuarioSimulado = {
+            user_id: "uuid-usuario-456",
             cpf: "12345678900",
             senha: "123",
             nome: "João Silva",

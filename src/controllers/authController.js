@@ -16,7 +16,7 @@ const login = async (req, res) => {
 
         // 2. Mock de dados (Simulação de Banco)
         const usuarioSimulado = {
-            user_id: "uuid-usuario-456",
+            id: "uuid-usuario-456",
             cpf: "12345678900",
             senha: "123",
             nome: "João Silva",
@@ -33,8 +33,9 @@ const login = async (req, res) => {
             return res.status(200).json({
                 success: true,
                 usuario: {
-                    id: "uuid-usuario-456",
+                    id: usuarioSimulado.id,
                     nome: usuarioSimulado.nome,
+                    cpf: usuarioSimulado.cpf,
                     perfil: usuarioSimulado.perfil,
                     condominio: usuarioSimulado.condominio,
                     condominio_id: usuarioSimulado.condominio_id,

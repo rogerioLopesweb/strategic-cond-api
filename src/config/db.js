@@ -1,18 +1,22 @@
 const { Pool } = require('pg');
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  // Dica: A Hostinger às vezes exige SSL para conexões externas.
-  // Se der erro de conexão, descomente a linha abaixo:
-  // ssl: { rejectUnauthorized: false }
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASS,
+  database: process.env.DB_NAME,
+  port: process.env.DB_PORT || 5432,
+  ssl: {
+    rejectUnauthorized: false // Necessário para conexões seguras em nuvens como a Hostinger
+  }
 });
 
 pool.on('connect', () => {
-  console.log('✅ Conexão estabelecida com o PostgreSQL');
+  console.log('✅ Conectado ao banco de dados PostgreSQL');
 });
 
 pool.on('error', (err) => {
-  console.error('❌ Erro inesperado no PostgreSQL:', err);
+  console.error('❌ Erro inesperado no pool de banco de dados', err);
 });
 
 module.exports = {

@@ -1,15 +1,23 @@
 const jwt = require('jsonwebtoken');
-const db = require('../config/db'); // Importa a conexão que criamos acima
+const db = require('../config/db');
 
 const login = async (req, res) => {
     const { cpf, senha } = req.body;
 
     try {
-        // 1. Busca o usuário pelo CPF e traz os dados do vínculo e do condomínio em uma única query
+        // 1. Busca usuário, vínculo e o NOME do condomínio em uma única query
         const queryText = `
-            SELECT u.id, u.nome_completo, u.senha_hash, v.perfil, v.condominio_id 
+            SELECT 
+                u.id, 
+                u.nome_completo, 
+                u.cpf,
+                u.senha_hash, 
+                v.perfil, 
+                v.condominio_id,
+                c.nome_fantasia as condominio_nome
             FROM usuarios u
             JOIN vinculos_condominio v ON u.id = v.usuario_id
+            JOIN condominios c ON c.id = v.condominio_id
             WHERE u.cpf = $1 AND v.ativo = true
             LIMIT 1
         `;
@@ -17,17 +25,23 @@ const login = async (req, res) => {
         const result = await db.query(queryText, [cpf]);
 
         if (result.rows.length === 0) {
-            return res.status(401).json({ success: false, message: 'Usuário não encontrado ou sem vínculo ativo' });
+            return res.status(401).json({ 
+                success: false, 
+                message: 'Usuário não encontrado ou sem vínculo ativo' 
+            });
         }
 
         const usuario = result.rows[0];
 
-        // 2. Validação da senha (Por enquanto comparando texto simples, depois usaremos bcrypt)
+        // 2. Validação da senha
         if (senha !== usuario.senha_hash) {
-            return res.status(401).json({ success: false, message: 'Senha inválida' });
+            return res.status(401).json({ 
+                success: false, 
+                message: 'Senha inválida' 
+            });
         }
 
-        // 3. Geração do Token JWT com dados reais do banco
+        // 3. Geração do Token JWT
         const token = jwt.sign(
             { 
                 id: usuario.id, 
@@ -38,18 +52,26 @@ const login = async (req, res) => {
             { expiresIn: '24h' }
         );
 
+        // 4. Resposta com a estrutura solicitada
         res.json({
             success: true,
-            token,
-            user: {
+            usuario: {
+                id: usuario.id,
                 nome: usuario.nome_completo,
-                perfil: usuario.perfil
+                cpf: usuario.cpf,
+                perfil: usuario.perfil,
+                condominio: usuario.condominio_nome,
+                condominio_id: usuario.condominio_id,
+                token: token
             }
         });
 
     } catch (error) {
         console.error('Erro no login:', error);
-        res.status(500).json({ success: false, message: 'Erro interno no servidor' });
+        res.status(500).json({ 
+            success: false, 
+            message: 'Erro interno no servidor' 
+        });
     }
 };
 

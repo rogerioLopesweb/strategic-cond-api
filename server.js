@@ -10,6 +10,7 @@ const swaggerJsdoc = require('swagger-jsdoc');
 // Importação das Rotas
 const authRoutes = require('./src/routes/authRoutes');
 const entregaRoutes = require('./src/routes/entregaRoutes');
+const unidadeRoutes = require('./src/routes/unidadeRoutes');
 const testRoutes = require('./src/routes/testRoutes');
 
 const app = express();
@@ -69,6 +70,7 @@ app.use('/uploads', express.static(uploadDir));
 // --- Rotas da API ---
 app.use('/api/auth', authRoutes);
 app.use('/api/entregas', entregaRoutes);
+app.use('/api/unidades', unidadeRoutes);
 app.use('/api/testes', testRoutes);
 
 // --- Rota de Teste de Saúde (Health Check) ---

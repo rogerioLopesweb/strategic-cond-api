@@ -8,50 +8,35 @@ const { verificarToken } = require('../middlewares/authMiddleware');
  * /api/unidades/moradores-vinculados:
  *   get:
  *     summary: Lista moradores ativos de uma unidade específica
- *     description: Retorna uma lista de usuários (inquilinos, proprietários, etc.) vinculados a uma unidade e bloco. Requer Token JWT para identificar o condomínio.
+ *     description: Retorna uma lista de moradores vinculados a uma unidade.
  *     tags:
  *       - Unidades
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: query
+ *         name: condominio_id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           description: "ID do condomínio (UUID)"
+ *       - in: query
  *         name: bloco
  *         required: true
  *         schema:
  *           type: string
- *           description: "Bloco ou Torre da unidade (Ex: A, B, 1)"
+ *           description: "Bloco ou Torre (Ex: A)"
  *       - in: query
  *         name: unidade
  *         required: true
  *         schema:
  *           type: string
- *           description: "Número da unidade/apartamento (Ex: 101, 202)"
+ *         description: "Número da unidade (Ex: 101)"
  *     responses:
  *       200:
- *         description: Lista de moradores encontrada com sucesso
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   usuario_id:
- *                     type: string
- *                     format: uuid
- *                   Nome:
- *                     type: string
- *                   Tipo:
- *                     type: string
- *                     example: "proprietario"
+ *         description: Lista enviada com sucesso
  *       400:
- *         description: Parâmetros insuficientes (bloco ou unidade ausentes)
- *       401:
- *         description: Não autorizado (Token ausente ou condomínio não identificado)
- *       404:
- *         description: Nenhum morador ativo encontrado para esta unidade
- *       500:
- *         description: Erro interno no servidor
+ *         description: Falta de parâmetros
  */
 router.get('/moradores-vinculados', verificarToken, buscarMoradoresPorUnidade);
 

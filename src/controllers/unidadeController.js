@@ -1,24 +1,15 @@
 const db = require('../config/db');
 
-/**
- * Lista moradores ativos de uma unidade
- * Segurança: O condominio_id é extraído prioritariamente do Token (req.user)
- */
 const buscarMoradoresPorUnidade = async (req, res) => {
-    // 1. Identificação do Condomínio (Extraído do Token via Middleware de Auth)
-    const condominio_id = req.user?.condominio_id || req.query.condominio_id;
-    
-    // 2. Extração e Limpeza dos parâmetros (trim remove espaços acidentais)
-    const bloco = req.query.bloco?.trim();
-    const unidade = req.query.unidade?.trim();
+    // Pega direto dos parâmetros da URL
+    const { condominio_id, bloco, unidade } = req.query;
 
-    // 3. Validação rigorosa
-    if (!condominio_id) {
-        return res.status(401).json({ error: 'Não autorizado: Condomínio não identificado.' });
-    }
-
-    if (!bloco || !unidade) {
-        return res.status(400).json({ error: 'Parâmetros obrigatórios: bloco e unidade.' });
+    // Validação simples: todos os 3 precisam existir
+    if (!condominio_id || !bloco || !unidade) {
+        return res.status(400).json({ 
+            success: false, 
+            message: 'Parâmetros insuficientes: condominio_id, bloco e unidade são obrigatórios.' 
+        });
     }
 
     try {
@@ -39,27 +30,20 @@ const buscarMoradoresPorUnidade = async (req, res) => {
                     WHEN uu.tipo_vinculo = 'inquilino' THEN 1 
                     WHEN uu.tipo_vinculo = 'proprietario' THEN 2 
                     ELSE 3 
-                END ASC, u.nome_completo ASC;
+                END ASC;
         `;
 
         const { rows } = await db.query(query, [condominio_id, bloco, unidade]);
 
-        // 4. Retorno amigável
         if (rows.length === 0) {
-            return res.status(404).json({ 
-                success: false, 
-                message: 'Nenhum morador ativo encontrado para esta unidade.' 
-            });
+            return res.status(404).json({ message: 'Nenhum morador encontrado.' });
         }
 
         return res.json(rows);
 
     } catch (error) {
-        console.error('❌ Erro na query de busca de morador:', error);
-        return res.status(500).json({ 
-            success: false, 
-            error: 'Erro interno ao processar a busca de moradores.' 
-        });
+        console.error('Erro:', error);
+        return res.status(500).json({ error: 'Erro interno no servidor.' });
     }
 };
 

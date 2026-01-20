@@ -1,24 +1,42 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const path = require('path'); // CORREÇÃO: Necessário para o express.static e path.join
+const fs = require('fs');     // ADICIONADO: Para garantir que a pasta de fotos exista
+
 const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
+
+// Importação das Rotas
 const authRoutes = require('./src/routes/authRoutes');
+const entregaRoutes = require('./src/routes/entregaRoutes');
+const testRoutes = require('./src/routes/testRoutes');
 
 const app = express();
 
+// --- Garantir existência da pasta de Uploads (Essencial para Volumes Docker) ---
+const uploadDir = path.join(__dirname, 'public/uploads');
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+    console.log(`📁 Pasta criada: ${uploadDir}`);
+}
+
 // --- Middlewares Globais ---
 app.use(cors());
-app.use(express.json());
 
-// --- Configuração do Swagger com Segurança JWT ---
+/** * Ajuste de Limite para Fotos Base64
+ */
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// --- Configuração do Swagger ---
 const swaggerOptions = {
     definition: {
         openapi: '3.0.0',
         info: {
             title: 'StrategicCond API',
             version: '1.0.0',
-            description: 'API para gestão de encomendas com IA e autenticação Bearer Token',
+            description: 'API para gestão de encomendas com armazenamento local na VPS',
         },
         servers: [
             { 
@@ -26,7 +44,6 @@ const swaggerOptions = {
                 description: 'Servidor Principal'
             }
         ],
-        // Definição do esquema de segurança para o Swagger
         components: {
             securitySchemes: {
                 bearerAuth: {
@@ -37,10 +54,7 @@ const swaggerOptions = {
                 }
             }
         },
-        // Aplica a segurança globalmente em todos os endpoints documentados
-        security: [{
-            bearerAuth: []
-        }]
+        security: [{ bearerAuth: [] }]
     },
     apis: ['./src/routes/*.js'], 
 };
@@ -48,12 +62,23 @@ const swaggerOptions = {
 const swaggerDocs = swaggerJsdoc(swaggerOptions);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
+// --- Rotas de Arquivos Estáticos ---
+// Permite acessar as fotos via: https://sua-api.com/uploads/nome-da-foto.jpg
+app.use('/uploads', express.static(uploadDir));
+
 // --- Rotas da API ---
 app.use('/api/auth', authRoutes);
+app.use('/api/entregas', entregaRoutes);
+app.use('/api/testes', testRoutes);
 
 // --- Rota de Teste de Saúde (Health Check) ---
 app.get('/', (req, res) => {
-    res.json({ success: true, message: 'StrategicCond API Online', version: '1.0.0' });
+    res.json({ 
+        success: true, 
+        message: 'StrategicCond API Online (Local Storage)', 
+        version: '1.0.0',
+        timestamp: new Date().toISOString()
+    });
 });
 
 // --- Tratamento de Erro 404 ---
@@ -63,6 +88,7 @@ app.use((req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`🚀 API rodando em http://localhost:${PORT}`);
-    console.log(`📖 Documentação em http://localhost:${PORT}/api-docs`);
+    console.log(`🚀 API rodando na porta ${PORT}`);
+    console.log(`📖 Documentação em /api-docs`);
+    console.log(`📸 Servindo arquivos de: ${uploadDir}`);
 });

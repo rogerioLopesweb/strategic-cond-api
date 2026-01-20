@@ -1,9 +1,7 @@
 const jwt = require('jsonwebtoken');
 
 const verificarToken = (req, res, next) => {
-    // Busca o token no cabeçalho Authorization
     const authHeader = req.headers['authorization'];
-    // O formato esperado é: "Bearer TOKEN_AQUI"
     const token = authHeader && authHeader.split(' ')[1];
 
     if (!token) {
@@ -15,13 +13,15 @@ const verificarToken = (req, res, next) => {
 
     try {
         const JWT_SECRET = process.env.JWT_SECRET || 'chave_mestra_secreta';
-        // Verifica se o token é legítimo e não expirou
         const decoded = jwt.verify(token, JWT_SECRET);
         
-        // Salva os dados do usuário (id, perfil) dentro da requisição
+        // Salva o objeto inteiro para uso posterior (perfil, nome, etc)
         req.usuario = decoded;
         
-        // Libera para a próxima função (o Controller)
+        // FACILITADOR: Salva o ID diretamente em usuarioId para o Controller
+        // Certifique-se que no seu LOGIN você está salvando como 'id' ou 'usuario_id'
+        req.usuarioId = decoded.id || decoded.usuario_id || decoded.sub;
+        
         next();
     } catch (error) {
         return res.status(403).json({ 

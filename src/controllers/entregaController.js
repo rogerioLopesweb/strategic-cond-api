@@ -193,51 +193,60 @@ const deletarEntrega = async (req, res) => {
     }
 };
 
-// 2. Listagem Inteligente (Filtros e Paginação)
+// 2. Listagem Inteligente (Filtros e Paginação) - REVISADA
 const listarEntregas = async (req, res) => {
     const { unidade, bloco, status, codigo_rastreio, morador_id, pagina = 1, limite = 10 } = req.query;
     const condominio_id = req.usuario.condominio_id; 
     const offset = (pagina - 1) * limite;
 
     try {
-        // Query melhorada com JOINs para trazer dados do morador e seu perfil
-        let query = `
+        // PARTE 1: Base das Queries (Dados e Contagem precisam dos mesmos filtros)
+        let baseFilter = ` WHERE e.condominio_id = $1`;
+        let values = [condominio_id];
+        let count = 2;
+
+        // Filtros dinâmicos compartilhados
+        if (unidade) { baseFilter += ` AND e.unidade = $${count++}`; values.push(unidade); }
+        if (bloco) { baseFilter += ` AND e.bloco = $${count++}`; values.push(bloco); }
+        if (status) { baseFilter += ` AND e.status = $${count++}`; values.push(status); }
+        if (morador_id) { baseFilter += ` AND e.morador_id = $${count++}`; values.push(morador_id); }
+        if (codigo_rastreio) { 
+            baseFilter += ` AND e.codigo_rastreio ILIKE $${count++}`; 
+            values.push(`%${codigo_rastreio}%`); 
+        }
+        if (req.query.retirada_urgente) {
+            baseFilter += ` AND e.retirada_urgente = $${count++}`;
+            values.push(req.query.retirada_urgente === 'true');
+        }
+
+        // PARTE 2: Busca de Dados com os JOINs necessários
+        let queryDados = `
             SELECT 
                 e.*, 
                 u.nome_completo AS morador_nome, 
                 u.telefone AS morador_telefone,
-                vc.perfil AS morador_tipo
+                vc.perfil AS morador_perfil,
+                op_in.nome_completo AS operador_entrada_nome,
+                op_out.nome_completo AS operador_saida_nome,
+                vc_out.perfil AS operador_saida_perfil 
             FROM entregas e
             LEFT JOIN usuarios u ON e.morador_id = u.id
             LEFT JOIN vinculos_condominio vc ON u.id = vc.usuario_id AND vc.condominio_id = e.condominio_id
-            WHERE e.condominio_id = $1
-        `;
+            LEFT JOIN usuarios op_in ON e.operador_entrada_id = op_in.id
+            LEFT JOIN usuarios op_out ON e.operador_saida_id = op_out.id
+            LEFT JOIN vinculos_condominio vc_out ON op_out.id = vc_out.usuario_id AND vc_out.condominio_id = e.condominio_id
+            ${baseFilter}
+            ORDER BY e.data_recebimento DESC 
+            LIMIT $${count++} OFFSET $${count++}`;
         
-        let values = [condominio_id];
-        let count = 2;
-
-        // Filtros dinâmicos
-        if (unidade) { query += ` AND e.unidade = $${count++}`; values.push(unidade); }
-        if (bloco) { query += ` AND e.bloco = $${count++}`; values.push(bloco); }
-        if (status) { query += ` AND e.status = $${count++}`; values.push(status); }
-        if (morador_id) { query += ` AND e.morador_id = $${count++}`; values.push(morador_id); }
-        if (codigo_rastreio) { 
-            query += ` AND e.codigo_rastreio ILIKE $${count++}`; 
-            values.push(`%${codigo_rastreio}%`); 
-        }
-        if (req.query.retirada_urgente) {
-            query += ` AND e.retirada_urgente = $${count++}`;
-            values.push(req.query.retirada_urgente === 'true');
-        }
-
-        // Ordenação e Paginação
-        query += ` ORDER BY e.data_recebimento DESC LIMIT $${count++} OFFSET $${count++}`;
-        values.push(limite, offset);
-
-        const result = await pool.query(query, values);
+        // Valores para os parâmetros de paginação
+        const valuesDados = [...values, parseInt(limite), offset];
+        const result = await pool.query(queryDados, valuesDados);
         
-        // Busca do total para paginação
-        const totalResult = await pool.query(`SELECT COUNT(*) FROM entregas WHERE condominio_id = $1`, [condominio_id]);
+        // PARTE 3: Contagem TOTAL real baseada nos mesmos filtros (ESSENCIAL)
+        // Usamos uma subquery ou apenas a tabela principal para performance
+        const queryTotal = `SELECT COUNT(*) FROM entregas e ${baseFilter}`;
+        const totalResult = await pool.query(queryTotal, values);
 
         res.json({
             success: true,
@@ -249,8 +258,8 @@ const listarEntregas = async (req, res) => {
             data: result.rows
         });
     } catch (error) {
-        console.error('Erro na API:', error);
-        res.status(500).json({ success: false, message: 'Erro ao buscar entregas.' });
+        console.error('Erro na listagem:', error);
+        res.status(500).json({ success: false, message: 'Erro interno ao listar.' });
     }
 };
 

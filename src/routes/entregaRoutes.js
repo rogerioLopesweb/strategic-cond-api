@@ -5,6 +5,7 @@ const {
     listarEntregas, 
     atualizarEntrega,
     deletarEntrega, 
+    cancelarEntrega,
     registrarSaidaManual,
     registrarSaidaQRCode 
 } = require('../controllers/entregaController');
@@ -116,6 +117,12 @@ router.put('/:id', verificarToken, atualizarEntrega);
  *         description: "Não é possível excluir entregas já retiradas"
  */
 router.delete('/:id', verificarToken, deletarEntrega);
+
+/** * NOVA ROTA: Cancelamento Logístico
+ * Substitui o antigo DELETE para manter auditoria.
+ * O porteiro deve enviar o 'motivo_cancelamento' no body.
+ */
+router.patch('/:id/cancelar',verificarToken, cancelarEntrega);
 
 /**
  * @openapi

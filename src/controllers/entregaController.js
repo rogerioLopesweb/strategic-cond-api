@@ -80,11 +80,8 @@ const registrarEntrega = async (req, res) => {
 
 // Função para atualizar uma entrega existente
 const atualizarEntrega = async (req, res) => {
-    const { id } = req.params; // ID da entrega
+    const { id } = req.params; 
     const { 
-        unidade, 
-        bloco, 
-        morador_id, 
         marketplace, 
         observacoes, 
         codigo_rastreio,
@@ -92,63 +89,67 @@ const atualizarEntrega = async (req, res) => {
         tipo_embalagem
     } = req.body;
 
+    // Captura o ID do operador logado (String/UUID)
+    const operador_atualizacao_id = req.usuario.id; 
     const condominio_id = req.usuario.condominio_id;
 
     try {
-        // Primeiro verificamos se a entrega pertence ao condomínio do usuário
+        // 1. Verificação de existência e status (Trava de segurança)
         const buscaEntrega = await pool.query(
-            'SELECT id FROM entregas WHERE id = $1 AND condominio_id = $2', 
+            'SELECT status FROM entregas WHERE id = $1 AND condominio_id = $2', 
             [id, condominio_id]
         );
 
         if (buscaEntrega.rows.length === 0) {
-            return res.status(404).json({ 
+            return res.status(404).json({ success: false, message: 'Registro não encontrado.' });
+        }
+
+        if (buscaEntrega.rows[0].status !== 'recebido') {
+            return res.status(400).json({ 
                 success: false, 
-                message: 'Entrega não encontrada ou sem permissão para editar.' 
+                message: 'Apenas encomendas pendentes podem ser editadas.' 
             });
         }
 
+        // 2. Query com Auditoria de Atualização
         const query = `
             UPDATE entregas 
             SET 
-                unidade = COALESCE($1, unidade),
-                bloco = COALESCE($2, bloco),
-                morador_id = COALESCE($3, morador_id),
-                marketplace = COALESCE($4, marketplace),
-                observacoes = COALESCE($5, observacoes),
-                codigo_rastreio = COALESCE($6, codigo_rastreio),
-                retirada_urgente = COALESCE($7, retirada_urgente),
-                tipo_embalagem = COALESCE($8, tipo_embalagem),
-                atualizado_em = NOW()
-            WHERE id = $9 AND condominio_id = $10
+                marketplace = COALESCE($1, marketplace),
+                observacoes = COALESCE($2, observacoes),
+                codigo_rastreio = COALESCE($3, codigo_rastreio),
+                retirada_urgente = COALESCE($4, retirada_urgente),
+                tipo_embalagem = COALESCE($5, tipo_embalagem),
+                operador_atualizacao_id = $6,
+                data_atualizacao = NOW()
+            WHERE id = $7 AND condominio_id = $8
             RETURNING *`;
 
         const values = [
-            unidade, 
-            bloco, 
-            morador_id, 
             marketplace, 
             observacoes, 
             codigo_rastreio, 
             retirada_urgente, 
             tipo_embalagem,
-            id, 
-            condominio_id
+            operador_atualizacao_id, // $6
+            id,                      // $7
+            condominio_id            // $8
         ];
 
         const result = await pool.query(query, values);
 
         res.json({ 
             success: true, 
-            message: 'Cadastro atualizado com sucesso!', 
+            message: 'Alterações salvas com sucesso!', 
             entrega: result.rows[0] 
         });
 
     } catch (error) {
         console.error('Erro ao atualizar entrega:', error);
-        res.status(500).json({ success: false, message: 'Erro interno ao atualizar cadastro.' });
+        res.status(500).json({ success: false, message: 'Erro interno ao salvar edição.' });
     }
 };
+
 // Função para deletar uma entrega
 const deletarEntrega = async (req, res) => {
     const { id } = req.params;
@@ -193,6 +194,60 @@ const deletarEntrega = async (req, res) => {
     }
 };
 
+// 1. Cancelamento Logístico com Auditoria
+const cancelarEntrega = async (req, res) => {
+    const { id } = req.params; // ID da entrega (String/UUID)
+    const { motivo_cancelamento } = req.body;
+    
+    // Captura o ID do operador (String) do Token
+    const operador_cancelamento_id = req.usuarioId || (req.usuario && req.usuario.id);
+    const condominio_id = req.usuario.condominio_id;
+
+    if (!motivo_cancelamento || motivo_cancelamento.trim() === "") {
+        return res.status(400).json({ 
+            success: false, 
+            message: 'O motivo do cancelamento é obrigatório para auditoria.' 
+        });
+    }
+
+    try {
+        const query = `
+            UPDATE entregas 
+            SET 
+                status = 'cancelada', 
+                data_cancelamento = NOW(), 
+                operador_cancelamento_id = $1,
+                motivo_cancelamento = $2
+            WHERE id = $3 
+              AND condominio_id = $4 
+              AND status = 'recebido' 
+            RETURNING *`;
+
+        const result = await pool.query(query, [
+            operador_cancelamento_id, 
+            motivo_cancelamento.trim(), 
+            id, 
+            condominio_id
+        ]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ 
+                success: false, 
+                message: 'Não foi possível cancelar. A encomenda pode já ter sido entregue ou não existe.' 
+            });
+        }
+
+        res.json({ 
+            success: true, 
+            message: 'Lançamento cancelado e registrado na auditoria!', 
+            entrega: result.rows[0] 
+        });
+    } catch (error) {
+        console.error('Erro no cancelamento logístico:', error);
+        res.status(500).json({ success: false, message: 'Erro interno ao processar cancelamento.' });
+    }
+};
+
 // 2. Listagem Inteligente (Filtros e Paginação) - REVISADA
 const listarEntregas = async (req, res) => {
     const { unidade, bloco, status, codigo_rastreio, morador_id, pagina = 1, limite = 10 } = req.query;
@@ -200,12 +255,11 @@ const listarEntregas = async (req, res) => {
     const offset = (pagina - 1) * limite;
 
     try {
-        // PARTE 1: Base das Queries (Dados e Contagem precisam dos mesmos filtros)
+        // PARTE 1: Base das Queries
         let baseFilter = ` WHERE e.condominio_id = $1`;
         let values = [condominio_id];
         let count = 2;
 
-        // Filtros dinâmicos compartilhados
         if (unidade) { baseFilter += ` AND e.unidade = $${count++}`; values.push(unidade); }
         if (bloco) { baseFilter += ` AND e.bloco = $${count++}`; values.push(bloco); }
         if (status) { baseFilter += ` AND e.status = $${count++}`; values.push(status); }
@@ -219,7 +273,7 @@ const listarEntregas = async (req, res) => {
             values.push(req.query.retirada_urgente === 'true');
         }
 
-        // PARTE 2: Busca de Dados com os JOINs necessários
+        // PARTE 2: Busca de Dados com Auditoria de Cancelamento
         let queryDados = `
             SELECT 
                 e.*, 
@@ -228,23 +282,34 @@ const listarEntregas = async (req, res) => {
                 vc.perfil AS morador_perfil,
                 op_in.nome_completo AS operador_entrada_nome,
                 op_out.nome_completo AS operador_saida_nome,
-                vc_out.perfil AS operador_saida_perfil 
+                vc_out.perfil AS operador_saida_perfil,
+                -- Novos campos de cancelamento
+                op_can.nome_completo AS operador_cancelamento_nome,
+                vc_can.perfil AS operador_cancelamento_perfil
             FROM entregas e
+            -- Dados do Morador
             LEFT JOIN usuarios u ON e.morador_id = u.id
             LEFT JOIN vinculos_condominio vc ON u.id = vc.usuario_id AND vc.condominio_id = e.condominio_id
+            
+            -- Dados de Entrada
             LEFT JOIN usuarios op_in ON e.operador_entrada_id = op_in.id
+            
+            -- Dados de Saída
             LEFT JOIN usuarios op_out ON e.operador_saida_id = op_out.id
             LEFT JOIN vinculos_condominio vc_out ON op_out.id = vc_out.usuario_id AND vc_out.condominio_id = e.condominio_id
+            
+            -- Dados de Cancelamento (Novos Joins)
+            LEFT JOIN usuarios op_can ON e.operador_cancelamento_id = op_can.id
+            LEFT JOIN vinculos_condominio vc_can ON op_can.id = vc_can.usuario_id AND vc_can.condominio_id = e.condominio_id
+            
             ${baseFilter}
             ORDER BY e.data_recebimento DESC 
             LIMIT $${count++} OFFSET $${count++}`;
         
-        // Valores para os parâmetros de paginação
         const valuesDados = [...values, parseInt(limite), offset];
         const result = await pool.query(queryDados, valuesDados);
         
-        // PARTE 3: Contagem TOTAL real baseada nos mesmos filtros (ESSENCIAL)
-        // Usamos uma subquery ou apenas a tabela principal para performance
+        // PARTE 3: Contagem TOTAL
         const queryTotal = `SELECT COUNT(*) FROM entregas e ${baseFilter}`;
         const totalResult = await pool.query(queryTotal, values);
 
@@ -310,4 +375,4 @@ const registrarSaidaQRCode = async (req, res) => {
     }
 };
 
-module.exports = { registrarEntrega, listarEntregas, registrarSaidaQRCode, registrarSaidaManual, deletarEntrega, atualizarEntrega };
+module.exports = { registrarEntrega, listarEntregas, registrarSaidaQRCode, registrarSaidaManual, deletarEntrega, cancelarEntrega, atualizarEntrega };

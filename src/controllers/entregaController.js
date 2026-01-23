@@ -6,7 +6,6 @@ const registrarEntrega = async (req, res) => {
     const { 
         codigo_rastreio, unidade, bloco, morador_id, 
         marketplace, observacoes, foto_base64, condominio_id,
-        // Novos campos recebidos do Front-end
         retirada_urgente, tipo_embalagem 
     } = req.body;
 
@@ -16,7 +15,11 @@ const registrarEntrega = async (req, res) => {
         return res.status(401).json({ success: false, message: 'Operador não identificado.' });
     }
 
+    const client = await pool.connect(); // Usando client para transação
+
     try {
+        await client.query('BEGIN');
+
         let url_foto = null;
         if (foto_base64) {
             const nomeArquivo = `entrega-${unidade}-${bloco}`;
@@ -26,55 +29,86 @@ const registrarEntrega = async (req, res) => {
             }
         }
 
-        const query = `
+        // 1. INSERIR A ENTREGA
+        const queryEntrega = `
             INSERT INTO entregas (
-                condominio_id, 
-                operador_entrada_id, 
-                unidade, 
-                bloco, 
-                codigo_rastreio, 
-                marketplace, 
-                morador_id, 
-                observacoes, 
-                status, 
-                data_recebimento, 
-                url_foto_etiqueta,
-                retirada_urgente,
-                tipo_embalagem
+                condominio_id, operador_entrada_id, unidade, bloco, 
+                codigo_rastreio, marketplace, morador_id, observacoes, 
+                status, data_recebimento, url_foto_etiqueta,
+                retirada_urgente, tipo_embalagem
             ) VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, 'recebido', NOW(), $9, $10, $11
             )
             RETURNING *`;
 
-        // Tratamento de valores padrão para garantir a integridade
-        const values = [
-            condominio_id, 
-            operador_entrada_id, 
-            unidade, 
-            bloco, 
-            codigo_rastreio, 
-            marketplace, 
-            morador_id, 
-            observacoes, 
-            url_foto,
-            retirada_urgente || false, // Default como falso
-            tipo_embalagem || 'Pacote' // Default como Pacote
+        const valuesEntrega = [
+            condominio_id, operador_entrada_id, unidade, bloco, 
+            codigo_rastreio, marketplace, morador_id, observacoes, 
+            url_foto, retirada_urgente || false, tipo_embalagem || 'Pacote'
         ];
 
-        const result = await pool.query(query, values);
+        const resultEntrega = await client.query(queryEntrega, valuesEntrega);
+        const entrega = resultEntrega.rows[0];
+
+        // 2. BUSCAR DADOS DO MORADOR PARA NOTIFICAÇÃO
+        const resMorador = await client.query(
+            'SELECT nome, email, expo_push_token FROM usuarios WHERE id = $1',
+            [morador_id]
+        );
+        const morador = resMorador.rows[0];
+
+        // 3. REGISTRAR LOGS DE NOTIFICAÇÃO (Omnichannel)
+        const notificacoes = [];
+        
+        // Preparar Push
+        if (morador?.expo_push_token) {
+            notificacoes.push({
+                canal: 'push',
+                destino: morador.expo_push_token,
+                titulo: '📦 Nova Encomenda!',
+                mensagem: `Olá ${morador.nome.split(' ')[0]}, um pacote (${marketplace || 'Volume'}) chegou na portaria.`
+            });
+        }
+
+        // Preparar E-mail
+        if (morador?.email) {
+            notificacoes.push({
+                canal: 'email',
+                destino: morador.email,
+                titulo: 'StrategicCond: Recebimento de Volume',
+                mensagem: `Existe uma nova encomenda da ${marketplace || 'Portaria'} aguardando retirada para a unidade ${unidade} ${bloco}.`
+            });
+        }
+
+        // Inserir na tabela notificacoes
+        for (const n of notificacoes) {
+            await client.query(`
+                INSERT INTO notificacoes (
+                    condominio_id, usuario_id, entrega_id, canal, 
+                    status, titulo, mensagem, destino, criado_em, tentativas
+                ) VALUES ($1, $2, $3, $4, 'pendente', $5, $6, $7, NOW(), 0)`,
+                [condominio_id, morador_id, entrega.id, n.canal, n.titulo, n.mensagem, n.destino]
+            );
+        }
+
+        await client.query('COMMIT');
 
         res.status(201).json({ 
             success: true, 
-            message: 'Entrega registrada com sucesso!', 
-            entrega: result.rows[0] 
+            message: 'Entrega registrada e notificações agendadas!', 
+            entrega 
         });
         
     } catch (error) {
-        console.error('Erro ao registrar entrega:', error);
+        await client.query('ROLLBACK');
+        console.error('Erro ao registrar entrega e notificações:', error);
+        
         if (error.code === '23503') {
-            return res.status(400).json({ success: false, message: 'Morador ou Condomínio inválido.' });
+            return res.status(400).json({ success: false, message: 'Dados de referência (morador/condomínio) inválidos.' });
         }
-        res.status(500).json({ success: false, message: 'Erro ao salvar no banco de dados.' });
+        res.status(500).json({ success: false, message: 'Erro ao processar registro.' });
+    } finally {
+        client.release();
     }
 };
 
@@ -353,18 +387,35 @@ const registrarSaidaManual = async (req, res) => {
 
 // 4. Baixa via QR Code (Auto-atendimento/Rápida)
 const registrarSaidaQRCode = async (req, res) => {
-    const { id } = req.params;
-    const operador_saida_id = req.usuarioId || (req.usuario && req.usuario.id);
+    let { id } = req.params; // ou req.body, dependendo da sua rota
+
+    // Sanitização: Garante que pegamos apenas os primeiros 36 caracteres (padrão UUID)
+    // Isso remove o "dgfghgh" que causou o erro no seu log
+    const idLimpo = id.trim().substring(0, 36);
+
+    // Validação básica de formato UUID antes de ir ao banco
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    
+    if (!uuidRegex.test(idLimpo)) {
+        return res.status(400).json({ 
+            success: false, 
+            message: 'O QR Code lido não contém um identificador de entrega válido.' 
+        });
+    }
 
     try {
         const query = `
             UPDATE entregas 
-            SET status = 'entregue', data_entrega = NOW(), operador_saida_id = $1,
-                quem_retirou = 'Portador do QR Code (Autorizado)', documento_retirou = 'Validado via App'
-            WHERE id = $2 AND status = 'recebido' RETURNING *`;
+            SET status = 'entregue', 
+                data_entrega = NOW(), 
+                operador_saida_id = $1,
+                quem_retirou = 'Portador do QR Code (Autorizado)', 
+                documento_retirou = 'Validado via App'
+            WHERE id = $2 AND status = 'recebido' 
+            RETURNING *`;
 
-        const result = await pool.query(query, [operador_saida_id, id]);
-
+        const result = await pool.query(query, [req.usuario.id, idLimpo]);
+        
         if (result.rows.length === 0) {
             return res.status(400).json({ success: false, message: 'QR Code inválido ou já utilizado.' });
         }

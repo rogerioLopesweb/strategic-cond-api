@@ -8,7 +8,8 @@ const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
 
 // Importação das Rotas
-const authRoutes = require('./src/routes/authRoutes');
+const authRoutes = require('/src/routes/authRoutes');
+const usuarioRoutes = require('/src/routes/usuarioRoutes');
 const entregaRoutes = require('./src/routes/entregaRoutes');
 const unidadeRoutes = require('./src/routes/unidadeRoutes');
 const testRoutes = require('./src/routes/testRoutes');
@@ -69,6 +70,7 @@ app.use('/uploads', express.static(uploadDir));
 
 // --- Rotas da API ---
 app.use('/api/auth', authRoutes);
+app.use('/api/usuarios', usuarioRoutes);
 app.use('/api/entregas', entregaRoutes);
 app.use('/api/unidades', unidadeRoutes);
 app.use('/api/testes', testRoutes);

@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const db = require('../config/db');
+const pool = require('../config/db');
 
 const login = async (req, res) => {
     const { cpf, senha } = req.body;
@@ -22,7 +22,7 @@ const login = async (req, res) => {
             LIMIT 1
         `;
         
-        const result = await db.query(queryText, [cpf]);
+        const result = await pool.query(queryText, [cpf]);
 
         if (result.rows.length === 0) {
             return res.status(401).json({ 

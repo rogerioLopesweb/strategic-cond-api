@@ -8,11 +8,14 @@ const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
 
 // Importação das Rotas
-const authRoutes = require('/src/routes/authRoutes');
-const usuarioRoutes = require('/src/routes/usuarioRoutes');
+const authRoutes = require('./src/routes/authRoutes');
+const usuarioRoutes = require('./src/routes/usuarioRoutes');
 const entregaRoutes = require('./src/routes/entregaRoutes');
 const unidadeRoutes = require('./src/routes/unidadeRoutes');
 const testRoutes = require('./src/routes/testRoutes');
+const enviaNotificacaoPushRoutes = require('./src/routes/enviaNotificacaoPushRoutes');
+const enviaNotificacaoEmailRoutes = require('./src/routes/enviaNotificacaoEmailRoutes');
+const qrCodeRoutes = require('./src/routes/qrCodeRoutes');
 
 const app = express();
 
@@ -74,6 +77,9 @@ app.use('/api/usuarios', usuarioRoutes);
 app.use('/api/entregas', entregaRoutes);
 app.use('/api/unidades', unidadeRoutes);
 app.use('/api/testes', testRoutes);
+app.use('/api/notificacoes', enviaNotificacaoPushRoutes);
+app.use('/api/notificacoes-email', enviaNotificacaoEmailRoutes);
+app.use('/api/qrcode', qrCodeRoutes);
 
 // --- Rota de Teste de Saúde (Health Check) ---
 app.get('/', (req, res) => {

@@ -1,4 +1,5 @@
-const db = require('../config/db');
+const path = require('path');
+const pool = require('../config/db');
 
 const buscarMoradoresPorUnidade = async (req, res) => {
     // Pega direto dos parâmetros da URL
@@ -33,7 +34,7 @@ const buscarMoradoresPorUnidade = async (req, res) => {
                 END ASC;
         `;
 
-        const { rows } = await db.query(query, [condominio_id, bloco, unidade]);
+        const { rows } = await pool.query(query, [condominio_id, bloco, unidade]);
 
         if (rows.length === 0) {
             return res.status(404).json({ message: 'Nenhum morador encontrado.' });

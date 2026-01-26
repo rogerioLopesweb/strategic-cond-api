@@ -1,7 +1,9 @@
+const path = require('path');
+// CORREÇÃO: Importando como 'pool' para consistência em todo o código
 const pool = require('../config/db');
 const storage = require('../services/storageService');
 
-// 1. Registro de Entrada (Portaria recebe o pacote)
+// 1. Registro de Entrada
 const registrarEntrega = async (req, res) => {
     const { 
         codigo_rastreio, unidade, bloco, morador_id, 
@@ -15,7 +17,7 @@ const registrarEntrega = async (req, res) => {
         return res.status(401).json({ success: false, message: 'Operador não identificado.' });
     }
 
-    const client = await pool.connect(); // Usando client para transação
+    const client = await pool.connect(); 
 
     try {
         await client.query('BEGIN');
@@ -50,246 +52,77 @@ const registrarEntrega = async (req, res) => {
         const resultEntrega = await client.query(queryEntrega, valuesEntrega);
         const entrega = resultEntrega.rows[0];
 
-        // 2. BUSCAR DADOS DO MORADOR PARA NOTIFICAÇÃO
+        // 2. BUSCAR DADOS DO MORADOR
         const resMorador = await client.query(
-            'SELECT nome, email, expo_push_token FROM usuarios WHERE id = $1',
+            'SELECT nome_completo, email, expo_push_token FROM usuarios WHERE id = $1',
             [morador_id]
         );
         const morador = resMorador.rows[0];
 
-        // 3. REGISTRAR LOGS DE NOTIFICAÇÃO (Omnichannel)
-        const notificacoes = [];
-        
-        // Preparar Push
-        if (morador?.expo_push_token) {
-            notificacoes.push({
-                canal: 'push',
-                destino: morador.expo_push_token,
-                titulo: '📦 Nova Encomenda!',
-                mensagem: `Olá ${morador.nome.split(' ')[0]}, um pacote (${marketplace || 'Volume'}) chegou na portaria.`
-            });
-        }
+        // 3. REGISTRAR LOGS DE NOTIFICAÇÃO
+        if (morador) {
+            const notificacoes = [];
+            // Proteção contra nome nulo para evitar erro no .split()
+            const primeiroNome = morador.nome_completo ? morador.nome_completo.split(' ')[0] : 'Morador';
+            
+            if (morador.expo_push_token) {
+                notificacoes.push({
+                    canal: 'push',
+                    destino: morador.expo_push_token,
+                    titulo: '📦 Nova Encomenda!',
+                    mensagem: `Olá ${primeiroNome}, um pacote (${marketplace || 'Volume'}) chegou na portaria.`
+                });
+            }
 
-        // Preparar E-mail
-        if (morador?.email) {
-            notificacoes.push({
-                canal: 'email',
-                destino: morador.email,
-                titulo: 'StrategicCond: Recebimento de Volume',
-                mensagem: `Existe uma nova encomenda da ${marketplace || 'Portaria'} aguardando retirada para a unidade ${unidade} ${bloco}.`
-            });
-        }
+            if (morador.email) {
+                notificacoes.push({
+                    canal: 'email',
+                    destino: morador.email,
+                    titulo: 'StrategicCond: Recebimento de Volume',
+                    mensagem: `Existe uma nova encomenda (${marketplace || 'Volume'}) para a unidade ${unidade} ${bloco}.`
+                });
+            }
 
-        // Inserir na tabela notificacoes
-        for (const n of notificacoes) {
-            await client.query(`
-                INSERT INTO notificacoes (
-                    condominio_id, usuario_id, entrega_id, canal, 
-                    status, titulo, mensagem, destino, criado_em, tentativas
-                ) VALUES ($1, $2, $3, $4, 'pendente', $5, $6, $7, NOW(), 0)`,
-                [condominio_id, morador_id, entrega.id, n.canal, n.titulo, n.mensagem, n.destino]
-            );
+            for (const n of notificacoes) {
+                await client.query(`
+                    INSERT INTO notificacoes (
+                        condominio_id, usuario_id, entrega_id, canal, 
+                        status, titulo, mensagem, destino, criado_em, tentativas
+                    ) VALUES ($1, $2, $3, $4, 'pendente', $5, $6, $7, NOW(), 0)`,
+                    [condominio_id, morador_id, entrega.id, n.canal, n.titulo, n.mensagem, n.destino]
+                );
+            }
         }
 
         await client.query('COMMIT');
-
-        res.status(201).json({ 
-            success: true, 
-            message: 'Entrega registrada e notificações agendadas!', 
-            entrega 
-        });
+        res.status(201).json({ success: true, message: 'Entrega registrada com sucesso!', entrega });
         
     } catch (error) {
-        await client.query('ROLLBACK');
-        console.error('Erro ao registrar entrega e notificações:', error);
-        
-        if (error.code === '23503') {
-            return res.status(400).json({ success: false, message: 'Dados de referência (morador/condomínio) inválidos.' });
-        }
-        res.status(500).json({ success: false, message: 'Erro ao processar registro.' });
+        if (client) await client.query('ROLLBACK');
+        console.error('Erro técnico no registro:', error);
+        res.status(500).json({ success: false, message: 'Erro ao processar registro.', error: error.message });
     } finally {
-        client.release();
+        if (client) client.release();
     }
 };
 
-// Função para atualizar uma entrega existente
-const atualizarEntrega = async (req, res) => {
-    const { id } = req.params; 
-    const { 
-        marketplace, 
-        observacoes, 
-        codigo_rastreio,
-        retirada_urgente,
-        tipo_embalagem
-    } = req.body;
-
-    // Captura o ID do operador logado (String/UUID)
-    const operador_atualizacao_id = req.usuario.id; 
-    const condominio_id = req.usuario.condominio_id;
-
-    try {
-        // 1. Verificação de existência e status (Trava de segurança)
-        const buscaEntrega = await pool.query(
-            'SELECT status FROM entregas WHERE id = $1 AND condominio_id = $2', 
-            [id, condominio_id]
-        );
-
-        if (buscaEntrega.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Registro não encontrado.' });
-        }
-
-        if (buscaEntrega.rows[0].status !== 'recebido') {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Apenas encomendas pendentes podem ser editadas.' 
-            });
-        }
-
-        // 2. Query com Auditoria de Atualização
-        const query = `
-            UPDATE entregas 
-            SET 
-                marketplace = COALESCE($1, marketplace),
-                observacoes = COALESCE($2, observacoes),
-                codigo_rastreio = COALESCE($3, codigo_rastreio),
-                retirada_urgente = COALESCE($4, retirada_urgente),
-                tipo_embalagem = COALESCE($5, tipo_embalagem),
-                operador_atualizacao_id = $6,
-                data_atualizacao = NOW()
-            WHERE id = $7 AND condominio_id = $8
-            RETURNING *`;
-
-        const values = [
-            marketplace, 
-            observacoes, 
-            codigo_rastreio, 
-            retirada_urgente, 
-            tipo_embalagem,
-            operador_atualizacao_id, // $6
-            id,                      // $7
-            condominio_id            // $8
-        ];
-
-        const result = await pool.query(query, values);
-
-        res.json({ 
-            success: true, 
-            message: 'Alterações salvas com sucesso!', 
-            entrega: result.rows[0] 
-        });
-
-    } catch (error) {
-        console.error('Erro ao atualizar entrega:', error);
-        res.status(500).json({ success: false, message: 'Erro interno ao salvar edição.' });
-    }
-};
-
-// Função para deletar uma entrega
-const deletarEntrega = async (req, res) => {
-    const { id } = req.params;
-    const condominio_id = req.usuario.condominio_id; // Pegando do Token JWT
-
-    try {
-        // 1. Verificamos se a entrega existe, se pertence ao condomínio e se o status é 'recebido' (pendente)
-        const checkQuery = `
-            SELECT status FROM entregas 
-            WHERE id = $1 AND condominio_id = $2
-        `;
-        const checkResult = await pool.query(checkQuery, [id, condominio_id]);
-
-        if (checkResult.rows.length === 0) {
-            return res.status(404).json({ 
-                success: false, 
-                message: 'Entrega não encontrada ou você não tem permissão.' 
-            });
-        }
-
-        const statusAtual = checkResult.rows[0].status;
-
-        // 2. Trava de Segurança: Só deleta se for 'recebido'
-        if (statusAtual !== 'recebido') {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Não é possível deletar uma entrega que já foi retirada ou devolvida.' 
-            });
-        }
-
-        // 3. Executa a deleção
-        await pool.query('DELETE FROM entregas WHERE id = $1', [id]);
-
-        res.json({ 
-            success: true, 
-            message: 'Entrega removida com sucesso!' 
-        });
-
-    } catch (error) {
-        console.error('Erro ao deletar entrega:', error);
-        res.status(500).json({ success: false, message: 'Erro interno ao processar a deleção.' });
-    }
-};
-
-// 1. Cancelamento Logístico com Auditoria
-const cancelarEntrega = async (req, res) => {
-    const { id } = req.params; // ID da entrega (String/UUID)
-    const { motivo_cancelamento } = req.body;
-    
-    // Captura o ID do operador (String) do Token
-    const operador_cancelamento_id = req.usuarioId || (req.usuario && req.usuario.id);
-    const condominio_id = req.usuario.condominio_id;
-
-    if (!motivo_cancelamento || motivo_cancelamento.trim() === "") {
-        return res.status(400).json({ 
-            success: false, 
-            message: 'O motivo do cancelamento é obrigatório para auditoria.' 
-        });
-    }
-
-    try {
-        const query = `
-            UPDATE entregas 
-            SET 
-                status = 'cancelada', 
-                data_cancelamento = NOW(), 
-                operador_cancelamento_id = $1,
-                motivo_cancelamento = $2
-            WHERE id = $3 
-              AND condominio_id = $4 
-              AND status = 'recebido' 
-            RETURNING *`;
-
-        const result = await pool.query(query, [
-            operador_cancelamento_id, 
-            motivo_cancelamento.trim(), 
-            id, 
-            condominio_id
-        ]);
-        
-        if (result.rows.length === 0) {
-            return res.status(404).json({ 
-                success: false, 
-                message: 'Não foi possível cancelar. A encomenda pode já ter sido entregue ou não existe.' 
-            });
-        }
-
-        res.json({ 
-            success: true, 
-            message: 'Lançamento cancelado e registrado na auditoria!', 
-            entrega: result.rows[0] 
-        });
-    } catch (error) {
-        console.error('Erro no cancelamento logístico:', error);
-        res.status(500).json({ success: false, message: 'Erro interno ao processar cancelamento.' });
-    }
-};
-
-// 2. Listagem Inteligente (Filtros e Paginação) - REVISADA
+// 2. Listagem Inteligente (Filtros e Paginação)
 const listarEntregas = async (req, res) => {
-    const { unidade, bloco, status, codigo_rastreio, morador_id, pagina = 1, limite = 10 } = req.query;
+    // Pegamos os filtros da query
+    const { unidade, bloco, status, codigo_rastreio, pagina = 1, limite = 10 } = req.query;
+    
+    // 1. SEGURANÇA: Se o perfil for 'morador', forçamos o filtro pelo ID dele
+    // Se for 'portaria' ou 'admin', usamos o morador_id que vier na query (se vier)
+    let morador_id_filtro = req.query.morador_id;
+    
+    if (req.usuario.perfil === 'morador') {
+        morador_id_filtro = req.usuario.id; // O morador só vê o que é dele
+    }
+
     const condominio_id = req.usuario.condominio_id; 
     const offset = (pagina - 1) * limite;
 
     try {
-        // PARTE 1: Base das Queries
         let baseFilter = ` WHERE e.condominio_id = $1`;
         let values = [condominio_id];
         let count = 2;
@@ -297,55 +130,43 @@ const listarEntregas = async (req, res) => {
         if (unidade) { baseFilter += ` AND e.unidade = $${count++}`; values.push(unidade); }
         if (bloco) { baseFilter += ` AND e.bloco = $${count++}`; values.push(bloco); }
         if (status) { baseFilter += ` AND e.status = $${count++}`; values.push(status); }
-        if (morador_id) { baseFilter += ` AND e.morador_id = $${count++}`; values.push(morador_id); }
+        
+        // Aplica o filtro de morador (seja o forçado pelo perfil ou o da busca da portaria)
+        if (morador_id_filtro) { 
+            baseFilter += ` AND e.morador_id = $${count++}`; 
+            values.push(morador_id_filtro); 
+        }
+
         if (codigo_rastreio) { 
             baseFilter += ` AND e.codigo_rastreio ILIKE $${count++}`; 
             values.push(`%${codigo_rastreio}%`); 
         }
+
         if (req.query.retirada_urgente) {
             baseFilter += ` AND e.retirada_urgente = $${count++}`;
             values.push(req.query.retirada_urgente === 'true');
         }
 
-        // PARTE 2: Busca de Dados com Auditoria de Cancelamento
         let queryDados = `
             SELECT 
                 e.*, 
                 u.nome_completo AS morador_nome, 
-                u.telefone AS morador_telefone,
-                vc.perfil AS morador_perfil,
                 op_in.nome_completo AS operador_entrada_nome,
                 op_out.nome_completo AS operador_saida_nome,
-                vc_out.perfil AS operador_saida_perfil,
-                -- Novos campos de cancelamento
-                op_can.nome_completo AS operador_cancelamento_nome,
-                vc_can.perfil AS operador_cancelamento_perfil
+                op_can.nome_completo AS operador_cancelamento_nome
             FROM entregas e
-            -- Dados do Morador
             LEFT JOIN usuarios u ON e.morador_id = u.id
-            LEFT JOIN vinculos_condominio vc ON u.id = vc.usuario_id AND vc.condominio_id = e.condominio_id
-            
-            -- Dados de Entrada
             LEFT JOIN usuarios op_in ON e.operador_entrada_id = op_in.id
-            
-            -- Dados de Saída
             LEFT JOIN usuarios op_out ON e.operador_saida_id = op_out.id
-            LEFT JOIN vinculos_condominio vc_out ON op_out.id = vc_out.usuario_id AND vc_out.condominio_id = e.condominio_id
-            
-            -- Dados de Cancelamento (Novos Joins)
             LEFT JOIN usuarios op_can ON e.operador_cancelamento_id = op_can.id
-            LEFT JOIN vinculos_condominio vc_can ON op_can.id = vc_can.usuario_id AND vc_can.condominio_id = e.condominio_id
-            
             ${baseFilter}
-            ORDER BY e.data_recebimento DESC 
+            ORDER BY 
+                CASE WHEN e.status = 'recebido' THEN 1 ELSE 2 END, -- Pendentes primeiro
+                e.data_recebimento DESC 
             LIMIT $${count++} OFFSET $${count++}`;
         
-        const valuesDados = [...values, parseInt(limite), offset];
-        const result = await pool.query(queryDados, valuesDados);
-        
-        // PARTE 3: Contagem TOTAL
-        const queryTotal = `SELECT COUNT(*) FROM entregas e ${baseFilter}`;
-        const totalResult = await pool.query(queryTotal, values);
+        const result = await pool.query(queryDados, [...values, parseInt(limite), offset]);
+        const totalResult = await pool.query(`SELECT COUNT(*) FROM entregas e ${baseFilter}`, values);
 
         res.json({
             success: true,
@@ -362,7 +183,7 @@ const listarEntregas = async (req, res) => {
     }
 };
 
-// 3. Baixa Manual (Porteiro identifica quem retirou)
+// 3. Baixa Manual
 const registrarSaidaManual = async (req, res) => {
     const { id } = req.params;
     const { quem_retirou, documento_retirou } = req.body;
@@ -376,7 +197,6 @@ const registrarSaidaManual = async (req, res) => {
             WHERE id = $4 AND status = 'recebido' RETURNING *`;
 
         const result = await pool.query(query, [operador_saida_id, quem_retirou, documento_retirou, id]);
-        
         if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Entrega indisponível.' });
 
         res.json({ success: true, message: 'Saída manual registrada!', entrega: result.rows[0] });
@@ -385,44 +205,87 @@ const registrarSaidaManual = async (req, res) => {
     }
 };
 
-// 4. Baixa via QR Code (Auto-atendimento/Rápida)
+// 4. Baixa via QR Code (Revisada e Sanitizada)
 const registrarSaidaQRCode = async (req, res) => {
-    let { id } = req.params; // ou req.body, dependendo da sua rota
+    let { id } = req.params;
 
-    // Sanitização: Garante que pegamos apenas os primeiros 36 caracteres (padrão UUID)
-    // Isso remove o "dgfghgh" que causou o erro no seu log
+    // CORREÇÃO: Sanitização do UUID para evitar erros de sintaxe (remove caracteres sujos)
     const idLimpo = id.trim().substring(0, 36);
-
-    // Validação básica de formato UUID antes de ir ao banco
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     
     if (!uuidRegex.test(idLimpo)) {
-        return res.status(400).json({ 
-            success: false, 
-            message: 'O QR Code lido não contém um identificador de entrega válido.' 
-        });
+        return res.status(400).json({ success: false, message: 'QR Code inválido.' });
     }
 
     try {
         const query = `
             UPDATE entregas 
-            SET status = 'entregue', 
-                data_entrega = NOW(), 
-                operador_saida_id = $1,
-                quem_retirou = 'Portador do QR Code (Autorizado)', 
-                documento_retirou = 'Validado via App'
-            WHERE id = $2 AND status = 'recebido' 
-            RETURNING *`;
+            SET status = 'entregue', data_entrega = NOW(), operador_saida_id = $1,
+                quem_retirou = 'Portador do QR Code (Autorizado)', documento_retirou = 'Validado via App'
+            WHERE id = $2 AND status = 'recebido' RETURNING *`;
 
         const result = await pool.query(query, [req.usuario.id, idLimpo]);
         
         if (result.rows.length === 0) {
-            return res.status(400).json({ success: false, message: 'QR Code inválido ou já utilizado.' });
+            return res.status(400).json({ success: false, message: 'Entrega não encontrada ou já retirada.' });
         }
 
-        res.json({ success: true, message: 'Retirada via QR Code confirmada!', entrega: result.rows[0] });
+        res.json({ success: true, message: 'Retirada confirmada!', entrega: result.rows[0] });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Erro ao processar QR Code.' });
+    }
+};
+
+// Funções de Auditoria e Deleção (Utilizando 'pool')
+const atualizarEntrega = async (req, res) => {
+    const { id } = req.params; 
+    const { marketplace, observacoes, codigo_rastreio, retirada_urgente, tipo_embalagem } = req.body;
+    const operador_atualizacao_id = req.usuario.id; 
+    const condominio_id = req.usuario.condominio_id;
+
+    try {
+        const query = `
+            UPDATE entregas 
+            SET marketplace = COALESCE($1, marketplace), observacoes = COALESCE($2, observacoes),
+                codigo_rastreio = COALESCE($3, codigo_rastreio), retirada_urgente = COALESCE($4, retirada_urgente),
+                tipo_embalagem = COALESCE($5, tipo_embalagem), operador_atualizacao_id = $6, data_atualizacao = NOW()
+            WHERE id = $7 AND condominio_id = $8 AND status = 'recebido' RETURNING *`;
+
+        const result = await pool.query(query, [marketplace, observacoes, codigo_rastreio, retirada_urgente, tipo_embalagem, operador_atualizacao_id, id, condominio_id]);
+
+        if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Não encontrado ou já finalizado.' });
+        res.json({ success: true, message: 'Atualizado!', entrega: result.rows[0] });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Erro ao atualizar.' });
+    }
+};
+
+const deletarEntrega = async (req, res) => {
+    const { id } = req.params;
+    const condominio_id = req.usuario.condominio_id;
+    try {
+        const result = await pool.query('DELETE FROM entregas WHERE id = $1 AND condominio_id = $2 AND status = \'recebido\'', [id, condominio_id]);
+        if (result.rowCount === 0) return res.status(404).json({ success: false, message: 'Não permitido deletar.' });
+        res.json({ success: true, message: 'Removido!' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Erro ao deletar.' });
+    }
+};
+
+const cancelarEntrega = async (req, res) => {
+    const { id } = req.params;
+    const { motivo_cancelamento } = req.body;
+    const operador_cancelamento_id = req.usuario.id;
+    const condominio_id = req.usuario.condominio_id;
+
+    try {
+        const query = `UPDATE entregas SET status = 'cancelada', data_cancelamento = NOW(), operador_cancelamento_id = $1, motivo_cancelamento = $2
+                       WHERE id = $3 AND condominio_id = $4 AND status = 'recebido' RETURNING *`;
+        const result = await pool.query(query, [operador_cancelamento_id, motivo_cancelamento, id, condominio_id]);
+        if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Cancelamento não permitido.' });
+        res.json({ success: true, message: 'Cancelado!', entrega: result.rows[0] });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Erro ao cancelar.' });
     }
 };
 

@@ -1,9 +1,13 @@
 const path = require('path');
-// CORREÇÃO: Importando como 'pool' para consistência em todo o código
 const pool = require('../config/db');
 const storage = require('../services/storageService');
 
-// 1. Registro de Entrada
+/**
+ * CONTROLADOR DE ENTREGAS - STRATEGICCOND
+ * Gerencia o ciclo de vida das encomendas: Recebimento -> Notificação -> Retirada.
+ */
+
+// 1. REGISTRO DE ENTRADA (Portaria bipa/cadastra encomenda)
 const registrarEntrega = async (req, res) => {
     const { 
         codigo_rastreio, unidade, bloco, morador_id, 
@@ -11,10 +15,11 @@ const registrarEntrega = async (req, res) => {
         retirada_urgente, tipo_embalagem 
     } = req.body;
 
+    // Pega o operador logado do token (Middleware de autenticação)
     const operador_entrada_id = req.usuarioId || (req.usuario && req.usuario.id);
 
-    if (!operador_entrada_id) {
-        return res.status(401).json({ success: false, message: 'Operador não identificado.' });
+    if (!operador_entrada_id || !condominio_id) {
+        return res.status(400).json({ success: false, message: 'Operador ou Condomínio não identificado.' });
     }
 
     const client = await pool.connect(); 
@@ -22,16 +27,17 @@ const registrarEntrega = async (req, res) => {
     try {
         await client.query('BEGIN');
 
+        // Upload da foto da etiqueta (se houver)
         let url_foto = null;
         if (foto_base64) {
-            const nomeArquivo = `entrega-${unidade}-${bloco}`;
+            const nomeArquivo = `entrega-${unidade}-${bloco}-${Date.now()}`;
             const pathRelativo = await storage.uploadFoto(foto_base64, nomeArquivo);
             if (pathRelativo) {
                 url_foto = await storage.gerarLinkVisualizacao(pathRelativo);
             }
         }
 
-        // 1. INSERIR A ENTREGA
+        // Inserção da Encomenda (Unidade e Bloco salvos como String/Varchar)
         const queryEntrega = `
             INSERT INTO entregas (
                 condominio_id, operador_entrada_id, unidade, bloco, 
@@ -52,44 +58,24 @@ const registrarEntrega = async (req, res) => {
         const resultEntrega = await client.query(queryEntrega, valuesEntrega);
         const entrega = resultEntrega.rows[0];
 
-        // 2. BUSCAR DADOS DO MORADOR
-        const resMorador = await client.query(
-            'SELECT nome_completo, email, expo_push_token FROM usuarios WHERE id = $1',
-            [morador_id]
-        );
-        const morador = resMorador.rows[0];
+        // 2. BUSCAR DADOS DO MORADOR PARA FILA DE NOTIFICAÇÃO
+        if (morador_id) {
+            const resMorador = await client.query(
+                'SELECT nome_completo, email, expo_push_token FROM usuarios WHERE id = $1',
+                [morador_id]
+            );
+            const morador = resMorador.rows[0];
 
-        // 3. REGISTRAR LOGS DE NOTIFICAÇÃO
-        if (morador) {
-            const notificacoes = [];
-            // Proteção contra nome nulo para evitar erro no .split()
-            const primeiroNome = morador.nome_completo ? morador.nome_completo.split(' ')[0] : 'Morador';
-            
-            if (morador.expo_push_token) {
-                notificacoes.push({
-                    canal: 'push',
-                    destino: morador.expo_push_token,
-                    titulo: '📦 Nova Encomenda!',
-                    mensagem: `Olá ${primeiroNome}, um pacote (${marketplace || 'Volume'}) chegou na portaria.`
-                });
-            }
-
-            if (morador.email) {
-                notificacoes.push({
-                    canal: 'email',
-                    destino: morador.email,
-                    titulo: 'StrategicCond: Recebimento de Volume',
-                    mensagem: `Existe uma nova encomenda (${marketplace || 'Volume'}) para a unidade ${unidade} ${bloco}.`
-                });
-            }
-
-            for (const n of notificacoes) {
+            if (morador) {
+                const primeiroNome = morador.nome_completo ? morador.nome_completo.split(' ')[0] : 'Morador';
+                
+                // Grava notificação pendente para o serviço de mensageria processar
                 await client.query(`
                     INSERT INTO notificacoes (
                         condominio_id, usuario_id, entrega_id, canal, 
                         status, titulo, mensagem, destino, criado_em, tentativas
-                    ) VALUES ($1, $2, $3, $4, 'pendente', $5, $6, $7, NOW(), 0)`,
-                    [condominio_id, morador_id, entrega.id, n.canal, n.titulo, n.mensagem, n.destino]
+                    ) VALUES ($1, $2, $3, 'push', 'pendente', $4, $5, $6, NOW(), 0)`,
+                    [condominio_id, morador_id, entrega.id, '📦 Nova Encomenda!', `Olá ${primeiroNome}, uma encomenda (${marketplace || 'Volume'}) chegou na portaria.`, morador.expo_push_token]
                 );
             }
         }
@@ -99,66 +85,69 @@ const registrarEntrega = async (req, res) => {
         
     } catch (error) {
         if (client) await client.query('ROLLBACK');
-        console.error('Erro técnico no registro:', error);
+        console.error('Erro no registro de entrega:', error);
         res.status(500).json({ success: false, message: 'Erro ao processar registro.', error: error.message });
     } finally {
         if (client) client.release();
     }
 };
 
-// 2. Listagem Inteligente (Filtros e Paginação)
+// 2. LISTAGEM INTELIGENTE (Filtros Alfanuméricos e Multi-Tenant)
 const listarEntregas = async (req, res) => {
-    // Pegamos os filtros da query
-    const { unidade, bloco, status, codigo_rastreio, pagina = 1, limite = 10 } = req.query;
-    
-    // 1. SEGURANÇA: Se o perfil for 'morador', forçamos o filtro pelo ID dele
-    // Se for 'portaria' ou 'admin', usamos o morador_id que vier na query (se vier)
-    let morador_id_filtro = req.query.morador_id;
-    
-    if (req.usuario.perfil === 'morador') {
-        morador_id_filtro = req.usuario.id; // O morador só vê o que é dele
+    const { 
+        condominio_id, unidade, bloco, status, 
+        codigo_rastreio, pagina = 1, limite = 10, retirada_urgente 
+    } = req.query;
+
+    if (!condominio_id) {
+        return res.status(400).json({ success: false, message: 'ID do condomínio é obrigatório.' });
     }
 
-    const condominio_id = req.usuario.condominio_id; 
     const offset = (pagina - 1) * limite;
 
     try {
+        // Filtro mestre: Condomínio selecionado
         let baseFilter = ` WHERE e.condominio_id = $1`;
         let values = [condominio_id];
         let count = 2;
 
-        if (unidade) { baseFilter += ` AND e.unidade = $${count++}`; values.push(unidade); }
-        if (bloco) { baseFilter += ` AND e.bloco = $${count++}`; values.push(bloco); }
-        if (status) { baseFilter += ` AND e.status = $${count++}`; values.push(status); }
-        
-        // Aplica o filtro de morador (seja o forçado pelo perfil ou o da busca da portaria)
-        if (morador_id_filtro) { 
-            baseFilter += ` AND e.morador_id = $${count++}`; 
-            values.push(morador_id_filtro); 
+        // Se o perfil for morador, trava a visualização apenas nos itens dele
+        if (req.usuario.perfil === 'morador') {
+            baseFilter += ` AND e.morador_id = $${count++}`;
+            values.push(req.usuario.id);
         }
 
-        if (codigo_rastreio) { 
-            baseFilter += ` AND e.codigo_rastreio ILIKE $${count++}`; 
-            values.push(`%${codigo_rastreio}%`); 
+        // Filtros dinâmicos (Unidade e Bloco agora tratam letras e números)
+        if (unidade && unidade.trim() !== "") { 
+            baseFilter += ` AND e.unidade ILIKE $${count++}`; 
+            values.push(`${unidade}%`); 
+        }
+        if (bloco && bloco.trim() !== "") { 
+            baseFilter += ` AND e.bloco ILIKE $${count++}`; 
+            values.push(`${bloco}%`); 
+        }
+        if (status) { 
+            baseFilter += ` AND e.status = $${count++}`; 
+            values.push(status); 
+        }
+        if (codigo_rastreio) {
+            baseFilter += ` AND e.codigo_rastreio ILIKE $${count++}`;
+            values.push(`%${codigo_rastreio}%`);
+        }
+        if (retirada_urgente === 'true') {
+            baseFilter += ` AND e.retirada_urgente = true`;
         }
 
-        if (req.query.retirada_urgente) {
-            baseFilter += ` AND e.retirada_urgente = $${count++}`;
-            values.push(req.query.retirada_urgente === 'true');
-        }
-
-        let queryDados = `
+        const queryDados = `
             SELECT 
                 e.*, 
                 u.nome_completo AS morador_nome, 
                 op_in.nome_completo AS operador_entrada_nome,
-                op_out.nome_completo AS operador_saida_nome,
-                op_can.nome_completo AS operador_cancelamento_nome
+                op_out.nome_completo AS operador_saida_nome
             FROM entregas e
             LEFT JOIN usuarios u ON e.morador_id = u.id
             LEFT JOIN usuarios op_in ON e.operador_entrada_id = op_in.id
             LEFT JOIN usuarios op_out ON e.operador_saida_id = op_out.id
-            LEFT JOIN usuarios op_can ON e.operador_cancelamento_id = op_can.id
             ${baseFilter}
             ORDER BY 
                 CASE WHEN e.status = 'recebido' THEN 1 ELSE 2 END, -- Pendentes primeiro
@@ -178,65 +167,71 @@ const listarEntregas = async (req, res) => {
             data: result.rows
         });
     } catch (error) {
-        console.error('Erro na listagem:', error);
-        res.status(500).json({ success: false, message: 'Erro interno ao listar.' });
+        console.error('Erro na listagem de entregas:', error);
+        res.status(500).json({ success: false, message: 'Erro interno ao listar entregas.' });
     }
 };
 
-// 3. Baixa Manual
+// 3. BAIXA MANUAL (Retirada física na portaria)
 const registrarSaidaManual = async (req, res) => {
     const { id } = req.params;
     const { quem_retirou, documento_retirou } = req.body;
-    const operador_saida_id = req.usuarioId || (req.usuario && req.usuario.id);
+    const operador_saida_id = req.usuario.id;
 
     try {
         const query = `
             UPDATE entregas 
-            SET status = 'entregue', data_entrega = NOW(), operador_saida_id = $1,
-                quem_retirou = $2, documento_retirou = $3
-            WHERE id = $4 AND status = 'recebido' RETURNING *`;
+            SET status = 'entregue', 
+                data_entrega = NOW(), 
+                operador_saida_id = $1,
+                quem_retirou = $2, 
+                documento_retirou = $3
+            WHERE id = $4 AND status = 'recebido' 
+            RETURNING *`;
 
         const result = await pool.query(query, [operador_saida_id, quem_retirou, documento_retirou, id]);
-        if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Entrega indisponível.' });
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Encomenda não disponível para baixa.' });
+        }
 
-        res.json({ success: true, message: 'Saída manual registrada!', entrega: result.rows[0] });
+        res.json({ success: true, message: 'Saída registrada com sucesso!', entrega: result.rows[0] });
     } catch (error) {
+        console.error('Erro na baixa manual:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 };
 
-// 4. Baixa via QR Code (Revisada e Sanitizada)
+// 4. BAIXA VIA QR CODE (Validado pelo morador)
 const registrarSaidaQRCode = async (req, res) => {
     let { id } = req.params;
-
-    // CORREÇÃO: Sanitização do UUID para evitar erros de sintaxe (remove caracteres sujos)
-    const idLimpo = id.trim().substring(0, 36);
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    
-    if (!uuidRegex.test(idLimpo)) {
-        return res.status(400).json({ success: false, message: 'QR Code inválido.' });
-    }
+    const idLimpo = id.trim().substring(0, 36); // Sanitização básica UUID
 
     try {
         const query = `
             UPDATE entregas 
-            SET status = 'entregue', data_entrega = NOW(), operador_saida_id = $1,
-                quem_retirou = 'Portador do QR Code (Autorizado)', documento_retirou = 'Validado via App'
-            WHERE id = $2 AND status = 'recebido' RETURNING *`;
+            SET status = 'entregue', 
+                data_entrega = NOW(), 
+                operador_saida_id = $1,
+                quem_retirou = 'Portador do QR Code', 
+                documento_retirou = 'Validado via App'
+            WHERE id = $2 AND status = 'recebido' 
+            RETURNING *`;
 
         const result = await pool.query(query, [req.usuario.id, idLimpo]);
         
         if (result.rows.length === 0) {
-            return res.status(400).json({ success: false, message: 'Entrega não encontrada ou já retirada.' });
+            return res.status(400).json({ success: false, message: 'QR Code inválido ou já utilizado.' });
         }
 
         res.json({ success: true, message: 'Retirada confirmada!', entrega: result.rows[0] });
     } catch (error) {
+        console.error('Erro no QR Code:', error);
         res.status(500).json({ success: false, message: 'Erro ao processar QR Code.' });
     }
 };
 
-// Funções de Auditoria e Deleção (Utilizando 'pool')
+// 5. ATUALIZAR / AUDITORIA (Correção de dados)
 const atualizarEntrega = async (req, res) => {
     const { id } = req.params; 
     const { marketplace, observacoes, codigo_rastreio, retirada_urgente, tipo_embalagem } = req.body;
@@ -246,32 +241,29 @@ const atualizarEntrega = async (req, res) => {
     try {
         const query = `
             UPDATE entregas 
-            SET marketplace = COALESCE($1, marketplace), observacoes = COALESCE($2, observacoes),
-                codigo_rastreio = COALESCE($3, codigo_rastreio), retirada_urgente = COALESCE($4, retirada_urgente),
-                tipo_embalagem = COALESCE($5, tipo_embalagem), operador_atualizacao_id = $6, data_atualizacao = NOW()
-            WHERE id = $7 AND condominio_id = $8 AND status = 'recebido' RETURNING *`;
+            SET marketplace = COALESCE($1, marketplace), 
+                observacoes = COALESCE($2, observacoes),
+                codigo_rastreio = COALESCE($3, codigo_rastreio), 
+                retirada_urgente = COALESCE($4, retirada_urgente),
+                tipo_embalagem = COALESCE($5, tipo_embalagem), 
+                operador_atualizacao_id = $6, 
+                data_atualizacao = NOW()
+            WHERE id = $7 AND condominio_id = $8 AND status = 'recebido' 
+            RETURNING *`;
 
         const result = await pool.query(query, [marketplace, observacoes, codigo_rastreio, retirada_urgente, tipo_embalagem, operador_atualizacao_id, id, condominio_id]);
 
-        if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Não encontrado ou já finalizado.' });
-        res.json({ success: true, message: 'Atualizado!', entrega: result.rows[0] });
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Encomenda não encontrada ou já finalizada.' });
+        }
+        res.json({ success: true, message: 'Dados atualizados!', entrega: result.rows[0] });
     } catch (error) {
-        res.status(500).json({ success: false, message: 'Erro ao atualizar.' });
+        console.error('Erro na atualização:', error);
+        res.status(500).json({ success: false, message: 'Erro ao atualizar dados.' });
     }
 };
 
-const deletarEntrega = async (req, res) => {
-    const { id } = req.params;
-    const condominio_id = req.usuario.condominio_id;
-    try {
-        const result = await pool.query('DELETE FROM entregas WHERE id = $1 AND condominio_id = $2 AND status = \'recebido\'', [id, condominio_id]);
-        if (result.rowCount === 0) return res.status(404).json({ success: false, message: 'Não permitido deletar.' });
-        res.json({ success: true, message: 'Removido!' });
-    } catch (error) {
-        res.status(500).json({ success: false, message: 'Erro ao deletar.' });
-    }
-};
-
+// 6. CANCELAMENTO (Trilha de auditoria)
 const cancelarEntrega = async (req, res) => {
     const { id } = req.params;
     const { motivo_cancelamento } = req.body;
@@ -279,14 +271,51 @@ const cancelarEntrega = async (req, res) => {
     const condominio_id = req.usuario.condominio_id;
 
     try {
-        const query = `UPDATE entregas SET status = 'cancelada', data_cancelamento = NOW(), operador_cancelamento_id = $1, motivo_cancelamento = $2
-                       WHERE id = $3 AND condominio_id = $4 AND status = 'recebido' RETURNING *`;
+        const query = `
+            UPDATE entregas 
+            SET status = 'cancelada', 
+                data_cancelamento = NOW(), 
+                operador_cancelamento_id = $1, 
+                motivo_cancelamento = $2
+            WHERE id = $3 AND condominio_id = $4 AND status = 'recebido' 
+            RETURNING *`;
+
         const result = await pool.query(query, [operador_cancelamento_id, motivo_cancelamento, id, condominio_id]);
-        if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Cancelamento não permitido.' });
-        res.json({ success: true, message: 'Cancelado!', entrega: result.rows[0] });
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Cancelamento não permitido para esta entrega.' });
+        }
+        res.json({ success: true, message: 'Entrega cancelada com sucesso!', entrega: result.rows[0] });
     } catch (error) {
+        console.error('Erro no cancelamento:', error);
         res.status(500).json({ success: false, message: 'Erro ao cancelar.' });
     }
 };
 
-module.exports = { registrarEntrega, listarEntregas, registrarSaidaQRCode, registrarSaidaManual, deletarEntrega, cancelarEntrega, atualizarEntrega };
+// 7. DELEÇÃO (Limpeza técnica - usar com cautela)
+const deletarEntrega = async (req, res) => {
+    const { id } = req.params;
+    const condominio_id = req.usuario.condominio_id;
+
+    try {
+        const result = await pool.query(
+            'DELETE FROM entregas WHERE id = $1 AND condominio_id = $2 AND status = \'recebido\'', 
+            [id, condominio_id]
+        );
+        if (result.rowCount === 0) return res.status(404).json({ success: false, message: 'Não permitido excluir.' });
+        res.json({ success: true, message: 'Registro removido do banco.' });
+    } catch (error) {
+        console.error('Erro na deleção:', error);
+        res.status(500).json({ success: false, message: 'Erro ao deletar.' });
+    }
+};
+
+module.exports = { 
+    registrarEntrega, 
+    listarEntregas, 
+    registrarSaidaQRCode, 
+    registrarSaidaManual, 
+    atualizarEntrega, 
+    cancelarEntrega, 
+    deletarEntrega 
+};

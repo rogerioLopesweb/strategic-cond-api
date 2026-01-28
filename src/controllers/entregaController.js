@@ -234,9 +234,9 @@ const registrarSaidaQRCode = async (req, res) => {
 // 5. ATUALIZAR / AUDITORIA (Correção de dados)
 const atualizarEntrega = async (req, res) => {
     const { id } = req.params; 
-    const { marketplace, observacoes, codigo_rastreio, retirada_urgente, tipo_embalagem } = req.body;
+    const { condominio_id, marketplace, observacoes, codigo_rastreio, retirada_urgente, tipo_embalagem } = req.body;
     const operador_atualizacao_id = req.usuario.id; 
-    const condominio_id = req.usuario.condominio_id;
+    
 
     try {
         const query = `

@@ -9,7 +9,7 @@ const { processarFilaEmail } = require('../controllers/enviaNotificacaoEmailCont
  *     summary: Processa fila de notificações por e-mail
  *     description: Rota para processar a fila de notificações por e-mail
  *     tags:
- *       - Notificações E-mail
+ *       - Notificações
  *     responses:
  *       200:
  *         description: Fila processada com sucesso

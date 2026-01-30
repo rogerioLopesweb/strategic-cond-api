@@ -49,8 +49,12 @@ const processarFilaPush = async (req, res) => {
                 sound: 'default',
                 title: row.titulo,
                 body: row.mensagem,
-                data: { entrega_id: row.entrega_id }, // Dados extras para o App abrir na tela certa
-                priority: 'high'
+                data: { entrega_id: row.entrega_id },
+                priority: 'high',
+                // 🚀 ADICIONE ESTE BLOCO ABAIXO:
+                android: {
+                    channelId: 'entregas', // Exatamente o nome que está no seu NotificationService.js
+                },
             });
             idsProcessados.push(row.id);
         }

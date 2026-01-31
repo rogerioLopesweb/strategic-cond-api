@@ -1,120 +1,92 @@
 const express = require('express');
 const router = express.Router();
-const {cadastrarUsuarioMorador, cadastrarUsuarioPortaria, salvarPushToken  } = require('../controllers/usuarioController');
-const { verificarToken } = require('../middlewares/authMiddleware');
+const { listarUsuariosDoCondominio, cadastrarUsuarioCompleto, getUsuarioDetalhado, atualizarPerfil, atualizarStatusUsuario, salvarPushToken, atualizarFoto}  = require('../controllers/usuarioController');
+const { verificarToken } = require('../middlewares/authMiddleware'); // Seu middleware de segurança
+
+// --- ROTAS DE LISTAGEM ---
 
 /**
  * @openapi
- * /api/usuarios/morador:
- *   post:
- *     summary: Cadastra usuário morador
- *     description: Cadastra um novo usuário do tipo morador
- *     tags:
- *       - Usuários
+ * /api/usuarios/condominio:
+ *   get:
+ *     summary: Lista usuários de um condomínio com filtros e paginação
+ *     tags: [Usuários]
  *     security:
  *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               nome:
- *                 type: string
- *                 example: "João Silva"
- *               cpf:
- *                 type: string
- *                 example: "12345678900"
- *               email:
- *                 type: string
- *                 example: "joao@email.com"
- *               senha:
- *                 type: string
- *                 example: "senha123"
- *     responses:
- *       201:
- *         description: Usuário cadastrado com sucesso
- *       400:
- *         description: Dados inválidos
- *       401:
- *         description: Token não fornecido ou inválido
- *       500:
- *         description: Erro interno do servidor
  */
-// Nova rota para cadastro de moradores
-router.post('/usuarios/morador', verificarToken, cadastrarUsuarioMorador);
+router.get('/condominio', verificarToken, listarUsuariosDoCondominio);
+
+// --- ROTAS DE CADASTRO E ATUALIZAÇÃO ---
 
 /**
  * @openapi
- * /api/usuarios/portaria:
+ * /api/usuarios/cadastrar:
  *   post:
- *     summary: Cadastra usuário portaria
- *     description: Cadastra um novo usuário do tipo portaria (usado pelo Síndico para criar sua equipe)
- *     tags:
- *       - Usuários
+ *     summary: Cadastro Mestre de Usuário (Gestão, Moradores e Equipe)
+ *     description: Cria usuário, faz upload de foto e vincula unidades em uma única transação.
+ *     tags: [Usuários]
  *     security:
  *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               nome:
- *                 type: string
- *                 example: "Maria Portaria"
- *               cpf:
- *                 type: string
- *                 example: "12345678900"
- *               email:
- *                 type: string
- *                 example: "maria@email.com"
- *               senha:
- *                 type: string
- *                 example: "senha123"
- *     responses:
- *       201:
- *         description: Usuário cadastrado com sucesso
- *       400:
- *         description: Dados inválidos
- *       401:
- *         description: Token não fornecido ou inválido
- *       500:
- *         description: Erro interno do servidor
  */
-// O Síndico usa esta para criar sua equipe
-router.post('/usuarios/portaria', verificarToken, cadastrarUsuarioPortaria);
+router.post('/cadastrar', verificarToken, cadastrarUsuarioCompleto);
+
+/**
+ * @openapi
+ * /api/usuarios/perfil:
+ *   put:
+ *     summary: Atualiza dados de perfil, foto e contato de emergência
+ *     tags: [Usuários]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.put('/perfil', verificarToken, atualizarPerfil);
+
+/**
+ * @openapi
+ * /api/usuarios/detalhes:
+ *   get:
+ *     summary: Retorna detalhes de um usuário específico
+ *     tags: [Usuários]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.get('/detalhes', getUsuarioDetalhado);
+
+// --- ROTAS DE STATUS E NOTIFICAÇÕES ---
+
+/**
+ * @openapi
+ * /api/usuarios/atualiza_status:
+ *   post:
+ *     summary: Ativa ou Desativa o vínculo do usuário (Toggle)
+ *     tags: [Usuários]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.post('/atualiza_status', verificarToken, atualizarStatusUsuario);
 
 /**
  * @openapi
  * /api/usuarios/push-token:
- *   put:
- *     summary: Salva o token de push do usuário
- *     tags:
- *       - Usuários
+ *   post:
+ *     summary: Salva o token do Expo para notificações push
+ *     tags: [Usuários]
  *     security:
  *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               token:
- *                 type: string
- *                 example: "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]"
- *     responses:
- *       200:
- *         description: Token de push atualizado com sucesso
- *       401:
- *         description: Token de autenticação inválido ou ausente
- *       500:
- *         description: Erro ao registrar dispositivo
  */
-router.put('/push-token', verificarToken, salvarPushToken);
+router.post('/push-token', verificarToken, salvarPushToken);
+
+/**
+ * @openapi
+ * /api/usuarios/atualizar-foto:
+ *   post:
+ *     summary: Salva a foto
+ *     tags: [Usuários]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.post('/atualizar-foto', verificarToken, atualizarFoto);
+
 
 
 module.exports = router;

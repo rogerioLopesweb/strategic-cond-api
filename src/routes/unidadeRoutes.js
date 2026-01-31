@@ -1,6 +1,13 @@
 const express = require('express');
 const router = express.Router();
-const { listarUnidades, gerarUnidadesEmMassa, vincularMoradorUnidade, buscarMoradoresPorUnidade } = require('../controllers/unidadeController');
+const { 
+    listarUnidades, 
+    gerarUnidadesEmMassa, 
+    vincularMoradorUnidade, 
+    buscarMoradoresPorUnidade,
+    vincularMoradorPorBloco, // ✅ Adicionado
+    atualizarStatusVinculo   // ✅ Adicionado
+} = require('../controllers/unidadeController');
 const { verificarToken } = require('../middlewares/authMiddleware');
 
 /**
@@ -12,36 +19,6 @@ const { verificarToken } = require('../middlewares/authMiddleware');
  *       - Unidades
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: condominio_id
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *       - in: query
- *         name: bloco
- *         schema:
- *           type: string
- *         description: Filtrar por bloco (opcional)
- *       - in: query
- *         name: unidade
- *         schema:
- *           type: string
- *         description: Filtrar por número da unidade (opcional)
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *         default: 1
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *         default: 10
- *     responses:
- *       200:
- *         description: Lista de unidades retornada com sucesso
  */
 router.get('/', verificarToken, listarUnidades);
 
@@ -50,33 +27,10 @@ router.get('/', verificarToken, listarUnidades);
  * /api/unidades/gerar-unidades:
  *   post:
  *     summary: Gera unidades em massa
- *     description: Gera unidades (blocos/apartamentos) em massa para um condomínio
  *     tags:
  *       - Unidades
  *     security:
  *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               condominio_id:
- *                 type: string
- *                 format: uuid
- *                 example: "550e8400-e29b-41d4-a716-446655440000"
- *               blocos:
- *                 type: array
- *                 items:
- *                   type: string
- *                 example: ["A", "B"]
- *               inicio:
- *                 type: integer
- *                 example: 101
- *               fim:
- *                 type: integer
- *                 example: 110
  */
 router.post('/gerar-unidades', verificarToken, gerarUnidadesEmMassa);
 
@@ -84,8 +38,21 @@ router.post('/gerar-unidades', verificarToken, gerarUnidadesEmMassa);
  * @openapi
  * /api/unidades/vincular-morador:
  *   post:
- *     summary: Vincula morador a unidade
- *     description: Vincula um usuário a uma unidade específica e ao condomínio
+ *     summary: Vincula morador via ID da Unidade
+ *     tags:
+ *       - Unidades
+ *     security:
+ *       - bearerAuth: []
+ */
+router.post('/vincular-morador', verificarToken, vincularMoradorUnidade);
+
+/**
+ * ✅ NOVA ROTA: Vincular por Bloco/Número
+ * @openapi
+ * /api/unidades/vincular-morador-bloco:
+ *   post:
+ *     summary: Vincula morador buscando por Bloco e Número
+ *     description: Usado na tela de edição para vincular imóveis sem precisar do ID prévio da unidade.
  *     tags:
  *       - Unidades
  *     security:
@@ -100,57 +67,63 @@ router.post('/gerar-unidades', verificarToken, gerarUnidadesEmMassa);
  *               usuario_id:
  *                 type: string
  *                 format: uuid
- *                 example: "uuid-do-usuario"
  *               condominio_id:
  *                 type: string
  *                 format: uuid
- *                 example: "uuid-do-condominio"
+ *               identificador_bloco:
+ *                 type: string
+ *                 example: "Torre A"
+ *               numero:
+ *                 type: string
+ *                 example: "101"
+ *               tipo_vinculo:
+ *                 type: string
+ *                 enum:
+ *                   - proprietario
+ *                   - inquilino
+ *                   - residente
+ */
+router.post('/vincular-morador-bloco', verificarToken, vincularMoradorPorBloco);
+
+/**
+ * ✅ NOVA ROTA: Atualizar Vínculo (Histórico/Saída)
+ * @openapi
+ * /api/unidades/atualizar-vinculo:
+ *   put:
+ *     summary: Ativa ou encerra um vínculo (Soft Delete)
+ *     description: Altera o status do vínculo. Se status for false, registra a data_saida.
+ *     tags:
+ *       - Unidades
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               usuario_id:
+ *                 type: string
+ *                 format: uuid
  *               unidade_id:
  *                 type: string
  *                 format: uuid
- *                 example: "uuid-da-unidade"
- *               tipo_vinculo:
- *                 type: string
- *                 enum: [proprietario, inquilino, dependente]
- *                 example: "inquilino"
+ *               status:
+ *                 type: boolean
+ *                 description: "false para registrar saída"
  */
-router.post('/vincular-morador', verificarToken, vincularMoradorUnidade);
+router.put('/atualizar-vinculo', verificarToken, atualizarStatusVinculo);
 
 /**
  * @openapi
  * /api/unidades/moradores-vinculados:
  *   get:
  *     summary: Lista moradores ativos de uma unidade específica
- *     description: Retorna uma lista de moradores vinculados a uma unidade.
  *     tags:
  *       - Unidades
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: condominio_id
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *         description: "ID do condomínio (UUID)"
- *       - in: query
- *         name: bloco
- *         required: true
- *         schema:
- *           type: string
- *         description: "Bloco ou Torre (Ex: A)"
- *       - in: query
- *         name: unidade
- *         required: true
- *         schema:
- *           type: string
- *         description: "Número da unidade (Ex: 101)"
- *     responses:
- *       200:
- *         description: Lista enviada com sucesso
- *       404:
- *         description: Nenhum morador encontrado
  */
 router.get('/moradores-vinculados', verificarToken, buscarMoradoresPorUnidade);
 

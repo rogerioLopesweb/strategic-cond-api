@@ -1,14 +1,14 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const { 
-    listarUnidades, 
-    gerarUnidadesEmMassa, 
-    vincularMoradorUnidade, 
-    buscarMoradoresPorUnidade,
-    vincularMoradorPorBloco, // ✅ Adicionado
-    atualizarStatusVinculo   // ✅ Adicionado
-} = require('../controllers/unidadeController');
-const { verificarToken } = require('../middlewares/authMiddleware');
+const {
+  listarUnidades,
+  gerarUnidadesEmMassa,
+  vincularMoradorUnidade,
+  buscarMoradoresPorUnidade,
+  vincularMoradorPorBloco, // ✅ Adicionado
+  atualizarStatusVinculo, // ✅ Adicionado
+} = require("../controllers/unidadeController");
+const { verificarToken } = require("../middlewares/authMiddleware");
 
 /**
  * @openapi
@@ -20,7 +20,7 @@ const { verificarToken } = require('../middlewares/authMiddleware');
  *     security:
  *       - bearerAuth: []
  */
-router.get('/', verificarToken, listarUnidades);
+router.get("/", verificarToken, listarUnidades);
 
 /**
  * @openapi
@@ -32,7 +32,7 @@ router.get('/', verificarToken, listarUnidades);
  *     security:
  *       - bearerAuth: []
  */
-router.post('/gerar-unidades', verificarToken, gerarUnidadesEmMassa);
+router.post("/gerar-unidades", verificarToken, gerarUnidadesEmMassa);
 
 /**
  * @openapi
@@ -44,7 +44,7 @@ router.post('/gerar-unidades', verificarToken, gerarUnidadesEmMassa);
  *     security:
  *       - bearerAuth: []
  */
-router.post('/vincular-morador', verificarToken, vincularMoradorUnidade);
+router.post("/vincular-morador", verificarToken, vincularMoradorUnidade);
 
 /**
  * ✅ NOVA ROTA: Vincular por Bloco/Número
@@ -83,7 +83,7 @@ router.post('/vincular-morador', verificarToken, vincularMoradorUnidade);
  *                   - inquilino
  *                   - residente
  */
-router.post('/vincular-morador-bloco', verificarToken, vincularMoradorPorBloco);
+router.post("/vincular-morador-bloco", verificarToken, vincularMoradorPorBloco);
 
 /**
  * ✅ NOVA ROTA: Atualizar Vínculo (Histórico/Saída)
@@ -113,7 +113,7 @@ router.post('/vincular-morador-bloco', verificarToken, vincularMoradorPorBloco);
  *                 type: boolean
  *                 description: "false para registrar saída"
  */
-router.put('/atualizar-vinculo', verificarToken, atualizarStatusVinculo);
+router.put("/atualizar-vinculo", verificarToken, atualizarStatusVinculo);
 
 /**
  * @openapi
@@ -125,6 +125,6 @@ router.put('/atualizar-vinculo', verificarToken, atualizarStatusVinculo);
  *     security:
  *       - bearerAuth: []
  */
-router.get('/moradores-vinculados', verificarToken, buscarMoradoresPorUnidade);
+router.get("/moradores-vinculados", verificarToken, buscarMoradoresPorUnidade);
 
 module.exports = router;

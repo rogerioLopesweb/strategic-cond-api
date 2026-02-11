@@ -2,16 +2,18 @@
   "name": "strategiccond",
   "version": "1.0.0",
   "description": "API para o projeto StrategicCond",
-  "main": "server.js",
+  "main": "src/server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "nodemon"
   },
   "keywords": [],
   "author": "Rogerio Lopes",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@asteasolutions/zod-to-openapi": "^7.3.4",
     "@aws-sdk/client-s3": "^3.971.0",
     "@aws-sdk/s3-request-presigner": "^3.971.0",
     "@google/generative-ai": "^0.24.1",
@@ -21,17 +23,29 @@
     "expo-server-sdk": "^4.0.0",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
+    "morgan": "^1.10.1",
     "multer": "^2.0.2",
     "nodemailer": "^7.0.12",
     "pg": "^8.17.1",
     "qrcode": "^1.5.4",
     "swagger-jsdoc": "^6.2.8",
-    "swagger-ui-express": "^5.0.1"
+    "swagger-ui-express": "^5.0.1",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
+    "@types/cors": "^2.8.17",
     "@types/express": "^5.0.6",
-    "@types/node": "^25.2.0",
+    "@types/jsonwebtoken": "^9.0.6",
+    "@types/morgan": "^1.9.10",
+    "@types/node": "^25.2.1",
+    "@types/nodemailer": "^6.4.14",
+    "@types/pg": "^8.16.0",
+    "@types/qrcode": "^1.5.5",
+    "@types/swagger-ui-express": "^4.1.6",
     "eslint-plugin-import": "^2.32.0",
-    "nodemon": "^3.1.11"
+    "nodemon": "^3.1.11",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
   }
 }

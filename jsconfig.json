@@ -1,9 +1,16 @@
 {
   "compilerOptions": {
     "module": "commonjs",
-    "target": "es6",
-    "checkJs": true,
-    "baseUrl": "."
+    "target": "ES2020" /* Alinhado com a versão moderna do Node */,
+    "checkJs": true /* Mantém o VS Code avisando erros em arquivos JS */,
+    "baseUrl": ".",
+
+    /* Espelhamento dos Path Aliases para o IntelliSense não se perder */
+    "paths": {
+      "@modules/*": ["src/modules/*"],
+      "@shared/*": ["src/shared/*"],
+      "@config/*": ["src/config/*"]
+    }
   },
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "dist"]
 }

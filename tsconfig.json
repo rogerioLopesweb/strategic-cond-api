@@ -1,15 +1,40 @@
 {
   "compilerOptions": {
-    "target": "es2016",
+    /* Configurações de Projeto */
+    "target": "ES2020",
     "module": "commonjs",
+    "moduleResolution": "node" /* 🎯 Garante que o Node encontre os módulos corretamente */,
+    "lib": ["ESNext"],
     "rootDir": "./src",
     "outDir": "./dist",
+
+    /* Suporte a tipos customizados (ESSENCIAL para o Express Request) */
+    "typeRoots": ["./node_modules/@types", "./src/shared/@types"],
+
+    /* Suporte a Decoradores */
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+
+    /* Rigor de Tipagem */
+    "strict": true,
+    "noImplicitAny": true,
+    /* Útil para Entidades: permite propriedades não iniciadas no campo, mas sim no constructor */
+    "strictPropertyInitialization": false,
+
+    /* Interoperabilidade e Performance */
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
-    "strict": true,
     "skipLibCheck": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+
+    /* Atalhos de Caminho (Path Mapping) */
+    "baseUrl": ".",
+    "paths": {
+      "@modules/*": ["src/modules/*"],
+      "@shared/*": ["src/shared/*"],
+      "@config/*": ["src/config/*"]
+    }
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules"]
+  "include": ["src/**/*", "src/shared/@types/express.d.ts"],
+  "exclude": ["node_modules", "dist"]
 }

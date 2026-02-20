@@ -5,13 +5,13 @@ import {
   UpdateUsuarioDTO,
 } from "../dtos/usuario.dto";
 // Certifique-se de que o caminho do import abaixo está correto
-import { IUsuarioDetalhadoDTO } from "./IUsuarioDetalhadoDTO";
+import { IUsuarioDetalhadoDTO } from "../dtos/IUsuarioDetalhadoDTO";
 
 export interface IUsuarioRepository {
   // Leitura
   listarComFiltros(
     filters: ListUsuarioFilters,
-  ): Promise<{ data: any[]; total: number }>;
+  ): Promise<{ data: any[]; total: number; page: number; limit: number }>;
 
   getDetalhado(
     id: string,

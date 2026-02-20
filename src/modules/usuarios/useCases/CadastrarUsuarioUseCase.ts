@@ -1,8 +1,9 @@
 // src_solid/modules/usuarios/use-cases/CadastrarUsuarioUseCase.ts
 import { IUsuarioRepository } from "../repositories/IUsuarioRepository";
-import { IHashProvider } from "../../../shared/providers/HashProvider/IHashProvider";
-import { IStorageProvider } from "../../../shared/providers/StorageProvider/models/IStorageProvider";
+import { IHashProvider } from "@shared/providers/HashProvider/IHashProvider";
+import { IStorageProvider } from "@shared/providers/StorageProvider/models/IStorageProvider";
 import { CreateUsuarioDTO } from "../dtos/usuario.dto";
+import { AppError } from "@shared/errors/AppError";
 
 export class CadastrarUsuarioUseCase {
   constructor(
@@ -13,9 +14,16 @@ export class CadastrarUsuarioUseCase {
 
   async execute(dados: CreateUsuarioDTO) {
     // 1. Regra de Negócio: Verificar se já existe
-    const usuarioExiste = await this.usuarioRepository.findByCpf(dados.cpf);
-    if (usuarioExiste) {
-      throw new Error("Este CPF já está cadastrado no sistema.");
+    const usuarioExisteCPF = await this.usuarioRepository.findByCpf(dados.cpf);
+    if (usuarioExisteCPF) {
+      throw new AppError("Este CPF já está cadastrado no sistema.");
+    }
+
+    const usuarioExisteEmail = await this.usuarioRepository.findByEmail(
+      dados.email,
+    );
+    if (usuarioExisteEmail) {
+      throw new AppError("Este email já está cadastrado no sistema.");
     }
 
     // 2. Regra de Negócio: Gerar senha provisória (6 primeiros dígitos do CPF)

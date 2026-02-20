@@ -1,13 +1,16 @@
 import { Router } from "express";
 
 // Importação das rotas dos módulos (Arquitetura Modular SOLID)
-import authRouter from "../../../../modules/autenticacao/routes/auth.routes";
-import usuariosRouter from "../../../../modules/usuarios/routes/usuario.routes";
-import contasRouter from "../../../../modules/contas/routes/conta.routes";
-import condominiosRouter from "../../../../modules/condominios/routes/condominio.routes";
-import unidadesRouter from "../../../../modules/unidades/routes/unidade.routes";
-import entregasRouter from "../../../../modules/entregas/routes/entrega.routes";
-import notificacoesRouter from "../../../../modules/notificacoes/routes/notificacao.routes";
+import authRouter from "@modules/autenticacao/routes/auth.routes";
+import usuariosRouter from "@modules/usuarios/routes/usuario.routes";
+import contasRouter from "@modules/contas/routes/conta.routes";
+import condominiosRouter from "@modules/condominios/routes/condominio.routes";
+import unidadesRouter from "@modules/unidades/routes/unidade.routes";
+import entregasRouter from "@modules/entregas/routes/entrega.routes";
+import notificacoesRouter from "@modules/notificacoes/routes/notificacao.routes";
+// ✅ Novo Módulo
+import visitantesRouter from "@modules/visitantes/routes/visitantes.routes";
+
 const routes = Router();
 
 /**
@@ -19,7 +22,7 @@ routes.get("/health", (req, res) => {
     status: "ok",
     timestamp: new Date().toISOString(),
     service: "StrategicCond-API",
-    version: "3.0.0 (SOLID - Entregas & Notificações)",
+    version: "3.1.0 (SOLID - Entregas, Notificações & Visitantes)", // Atualizei a versão
   });
 });
 
@@ -58,8 +61,14 @@ routes.use("/api/entregas", entregasRouter);
  */
 routes.use("/api/notificacoes", notificacoesRouter);
 
+/**
+ * 🚶 Visitantes (Controle de Acesso e Portaria)
+ * Gestão de entrada/saída de visitantes e prestadores
+ */
+routes.use("/api/visitantes", visitantesRouter);
+
 // 🚀 Próximas expansões planejadas:
-// routes.use("/api/visitantes", visitantesRouter);
 // routes.use("/api/reservas", reservasRouter);
+// routes.use("/api/ocorrencias", ocorrenciasRouter);
 
 export default routes;

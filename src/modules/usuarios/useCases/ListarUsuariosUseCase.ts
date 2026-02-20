@@ -6,20 +6,17 @@ export class ListarUsuariosUseCase {
   constructor(private usuarioRepository: IUsuarioRepository) {}
 
   async execute(filters: ListUsuarioFilters) {
-    const { data, total } =
+    const { data, total, page, limit } =
       await this.usuarioRepository.listarComFiltros(filters);
 
-    const totalPages = Math.ceil(total / filters.limit);
-
     return {
-      success: true,
-      meta: {
-        total,
-        pagina: Number(filters.page),
-        limite: Number(filters.limit),
-        total_pages: totalPages,
-      },
       data,
+      pagination: {
+        total,
+        page,
+        limit,
+        total_pages: Math.ceil(total / limit),
+      },
     };
   }
 }

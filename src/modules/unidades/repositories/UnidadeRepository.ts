@@ -11,7 +11,9 @@ export class UnidadeRepository {
    * 🔍 Lista unidades com filtros de bloco/número e paginação
    */
   async listar(filters: ListUnidadeFilters) {
-    const offset = (filters.page - 1) * filters.limit;
+    const page = Number(filters.page) || 1;
+    const limit = Number(filters.limit) || 10;
+    const offset = (page - 1) * limit;
 
     const values = [
       filters.condominio_id,
@@ -41,13 +43,15 @@ export class UnidadeRepository {
     `;
 
     const [rows, count] = await Promise.all([
-      db.query(dataQuery, [...values, filters.limit, offset]),
+      db.query(dataQuery, [...values, limit, offset]),
       db.query(countQuery, values),
     ]);
 
     return {
       data: rows.rows,
       total: count.rows[0].total,
+      page,
+      limit,
     };
   }
 

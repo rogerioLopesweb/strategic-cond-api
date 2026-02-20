@@ -1,5 +1,5 @@
 import { EntregaRepository } from "../repositories/EntregaRepository";
-import { RegistrarRetiradaDTO } from "../schemas/entregaSchema";
+import { RegistrarRetiradaManualDTO } from "../schemas/entregaSchema";
 import { Entrega } from "../entities/Entrega";
 import { AppError } from "../../../shared/errors/AppError";
 import { IStorageProvider } from "../../../shared/providers/StorageProvider/models/IStorageProvider";
@@ -11,7 +11,7 @@ export class FinalizarSaidaEntregaUseCase {
   ) {}
 
   async execute(
-    dados: RegistrarRetiradaDTO,
+    dados: RegistrarRetiradaManualDTO,
     operadorId: string,
     isQRCode = false,
   ) {

@@ -62,7 +62,7 @@ export const createEntregaSchema = registry.register(
 /**
  * Schema para registrar a retirada da entrega
  */
-export const registrarRetiradaSchema = registry.register(
+export const registrarRetiradaManualSchema = registry.register(
   "RegistrarRetiradaInput",
   z.object({
     entrega_id: z
@@ -113,5 +113,7 @@ export const listEntregaSchema = z.object({
 
 // Tipos inferidos
 export type CreateEntregaDTO = z.infer<typeof createEntregaSchema>;
-export type RegistrarRetiradaDTO = z.infer<typeof registrarRetiradaSchema>;
+export type RegistrarRetiradaManualDTO = z.infer<
+  typeof registrarRetiradaManualSchema
+>;
 export type ListEntregaFilters = z.infer<typeof listEntregaSchema>;

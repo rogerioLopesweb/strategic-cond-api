@@ -5,7 +5,7 @@ import { registry } from "@shared/infra/http/openapi/registry";
 import {
   createEntregaSchema,
   listEntregaSchema,
-  registrarRetiradaSchema,
+  registrarRetiradaManualSchema,
 } from "../schemas/entregaSchema";
 import { z } from "zod";
 
@@ -39,17 +39,32 @@ registry.registerPath({
 });
 
 registry.registerPath({
-  method: "put",
-  path: "/api/entregas/retirada",
+  method: "patch",
+  path: "/api/entregas/{id}/saida-manual",
   tags: ["Entregas"],
-  summary: "Registra a retirada manual de uma encomenda",
+  summary: "Registra a saída manual de uma entrega (Portaria)",
   security: [{ bearerAuth: [] }],
   request: {
+    params: z.object({
+      id: z.string().uuid(),
+    }),
     body: {
-      content: { "application/json": { schema: registrarRetiradaSchema } },
+      content: {
+        "application/json": {
+          // Alinhado com o que o FinalizarSaidaEntregaUseCase espera
+          schema: z.object({
+            retirado_por: z.string().min(3),
+            documento_retirada: z.string().optional(),
+          }).openapi("RegistrarSaidaManualBody"),
+        },
+      },
     },
   },
-  responses: { 200: { description: "Retirada confirmada" } },
+  responses: {
+    200: {
+      description: "Saída registrada com sucesso",
+    },
+  },
 });
 
 registry.registerPath({
@@ -94,6 +109,9 @@ router.get("/", verificarToken, (req, res) => controller.index(req, res));
 
 // Fluxos de Saída (Baixa)
 router.put("/retirada", verificarToken, (req, res) =>
+  controller.registrarRetirada(req, res),
+);
+router.patch("/:id/saida-manual", verificarToken, (req, res) =>
   controller.registrarRetirada(req, res),
 );
 router.patch("/:id/saida-qrcode", verificarToken, (req, res) =>

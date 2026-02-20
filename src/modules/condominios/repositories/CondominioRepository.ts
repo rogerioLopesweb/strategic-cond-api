@@ -70,7 +70,19 @@ export class CondominioRepository implements ICondominioRepository {
       WHERE id = $11 
       RETURNING *;
     `;
-    const params = [...Object.values(data), id];
+    const params = [
+      data.nome_fantasia ?? null,
+      data.razao_social ?? null,
+      data.cnpj ?? null,
+      data.logradouro ?? null,
+      data.numero ?? null,
+      data.bairro ?? null,
+      data.cidade ?? null,
+      data.estado ?? null,
+      data.cep ?? null,
+      data.ativo ?? null,
+      id,
+    ];
     const result = await db.query(query, params);
 
     if (result.rowCount === 0) {

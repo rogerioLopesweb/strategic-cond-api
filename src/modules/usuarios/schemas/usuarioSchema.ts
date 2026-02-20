@@ -63,7 +63,7 @@ export const createUsuarioSchema = registry.register(
       .uuid()
       .openapi({ example: "123e4567-e89b-12d3-a456-426614174000" }),
     unidades: z.array(unidadeSchema).optional(),
-    foto_base64: z
+    /* foto_base64: z
       .string()
       .optional()
       .openapi({ description: "Foto de perfil em Base64" }),
@@ -74,7 +74,7 @@ export const createUsuarioSchema = registry.register(
     contato_emergencia: z
       .string()
       .optional()
-      .openapi({ example: "Maria (11) 98888-8888" }),
+      .openapi({ example: "Maria (11) 98888-8888" }),*/
   }),
 );
 

@@ -5,15 +5,15 @@ export class ListarUnidadesUseCase {
   constructor(private repository: UnidadeRepository) {}
 
   async execute(filters: ListUnidadeFilters) {
-    const result = await this.repository.listar(filters);
+    const { data, total, page, limit } = await this.repository.listar(filters);
 
     return {
-      data: result.data,
+      data,
       pagination: {
-        total: result.total,
-        page: filters.page,
-        limit: filters.limit,
-        total_pages: Math.ceil(result.total / filters.limit),
+        total,
+        page,
+        limit,
+        total_pages: Math.ceil(total / limit),
       },
     };
   }

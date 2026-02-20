@@ -2,14 +2,23 @@ import { ICondominioRepository } from "../repositories/ICondominioRepository";
 import { ICreateCondominioDTO } from "../dtos/condominio.dto";
 import { AppError } from "@shared/errors/AppError";
 import { Condominio } from "../entities/Condominio";
+import { UsuarioAuth } from "@modules/autenticacao/schemas/authSchema";
 
 export class CadastrarCondominioUseCase {
   constructor(private repository: ICondominioRepository) {}
 
   async execute(
     dados: ICreateCondominioDTO,
-    usuario: any,
+    usuario: UsuarioAuth,
   ): Promise<Condominio> {
+    // Regra: Apenas usuários Master podem cadastrar novos condomínios
+    if (!usuario.isMaster) {
+      throw new AppError(
+        "Acesso negado: Apenas usuários Master podem cadastrar condomínios.",
+        403,
+      );
+    }
+
     const contaAlvo = dados.conta_id || usuario.conta_id;
 
     if (!contaAlvo) {
@@ -41,7 +50,7 @@ export class CadastrarCondominioUseCase {
     await this.repository.vincularUsuario(
       novoCondominio.id,
       usuario.id,
-      dados.perfil, // O perfil (ex: 'sindico', 'admin') vem do DTO
+      "administrador", // O criador (Master) entra sempre com perfil de administrador no novo condomínio
     );
 
     return novoCondominio;

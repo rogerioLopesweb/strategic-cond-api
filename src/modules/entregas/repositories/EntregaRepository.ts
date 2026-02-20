@@ -85,7 +85,7 @@ export class EntregaRepository {
     }
 
     // 🔥 FILTRO DE URGÊNCIA (Trata string e boolean com segurança)
-    if (Boolean(retirada_urgente) === true || retirada_urgente === "true") {
+    if (retirada_urgente === "true") {
       queryBase += ` AND e.retirada_urgente = true`;
     }
 

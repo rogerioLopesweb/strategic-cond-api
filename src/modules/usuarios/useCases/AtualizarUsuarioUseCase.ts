@@ -3,6 +3,7 @@ import { IStorageProvider } from "@shared/providers/StorageProvider/models/IStor
 import { validarEFormatarData } from "@shared/providers/utils/datas";
 import { IUsuarioRepository } from "../repositories/IUsuarioRepository";
 import { UpdateUsuarioDTO } from "../dtos/usuario.dto";
+import { AppError } from "@shared/errors/AppError";
 
 export class AtualizarUsuarioUseCase {
   constructor(
@@ -15,7 +16,7 @@ export class AtualizarUsuarioUseCase {
     let dataFormatada = null;
     if (dados.data_nascimento) {
       dataFormatada = validarEFormatarData(dados.data_nascimento);
-      if (!dataFormatada) throw new Error("Data de nascimento inválida.");
+      if (!dataFormatada) throw new AppError("Data de nascimento inválida.");
     }
 
     // 2. Lógica de nova foto (se houver base64 no payload)
@@ -33,7 +34,7 @@ export class AtualizarUsuarioUseCase {
     }
 
     // 3. Persistir demais alterações no repositório
-    await this.usuarioRepository.atualizarCompleto(dados);
+    await this.usuarioRepository.atualizarCompleto(dados, dataFormatada);
 
     return { success: true };
   }

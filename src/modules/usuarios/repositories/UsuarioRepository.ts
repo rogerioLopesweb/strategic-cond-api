@@ -6,11 +6,13 @@ import {
 } from "../dtos/usuario.dto";
 import { Usuario } from "../entities/Usuario";
 import { IUsuarioRepository } from "./IUsuarioRepository";
-import { IUsuarioDetalhadoDTO } from "./IUsuarioDetalhadoDTO";
+import { IUsuarioDetalhadoDTO } from "../dtos/IUsuarioDetalhadoDTO";
 
 export class UsuarioRepository implements IUsuarioRepository {
   async listarComFiltros(f: ListUsuarioFilters) {
-    const offset = (f.page - 1) * f.limit;
+    const page = Number(f.page) || 1;
+    const limit = Number(f.limit) || 10;
+    const offset = (page - 1) * limit;
     const values = [
       f.condominio_id,
       f.nome ? `%${f.nome}%` : null,
@@ -39,7 +41,7 @@ export class UsuarioRepository implements IUsuarioRepository {
     `;
 
     const countQuery = `
-      SELECT COUNT(DISTINCT u.id) as count
+      SELECT COUNT(DISTINCT u.id)::int as total
       FROM usuarios u
       INNER JOIN vinculos_condominio v ON u.id = v.usuario_id
       LEFT JOIN unidade_usuarios uu ON u.id = uu.usuario_id AND uu.condominio_id = v.condominio_id
@@ -52,13 +54,15 @@ export class UsuarioRepository implements IUsuarioRepository {
     `;
 
     const [result, totalResult] = await Promise.all([
-      db.query(dataQuery, [...values, f.limit, offset]),
+      db.query(dataQuery, [...values, limit, offset]),
       db.query(countQuery, values),
     ]);
 
     return {
       data: result.rows,
-      total: parseInt(totalResult.rows[0].count),
+      total: totalResult.rows[0].total,
+      page,
+      limit,
     };
   }
   async cadastrarCompleto(dados: CreateUsuarioDTO, senhaHash: string) {
@@ -76,8 +80,8 @@ export class UsuarioRepository implements IUsuarioRepository {
           dados.email,
           dados.telefone,
           senhaHash,
-          dados.data_nascimento,
-          dados.contato_emergencia,
+          dados.data_nascimento || null,
+          dados.contato_emergencia || null,
         ],
       );
       const usuarioId = userRes.rows[0].id;
@@ -177,10 +181,10 @@ export class UsuarioRepository implements IUsuarioRepository {
       foto_perfil: row.foto_perfil,
       data_nascimento: row.data_nascimento,
       contato_emergencia: row.contato_emergencia,
-      
+
       perfil: row.perfil,
       ativo: row.ativo,
-      
+
       unidades_vinculadas: row.unidades_vinculadas,
     };
   }

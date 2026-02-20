@@ -57,11 +57,10 @@ export class UsuarioController {
   }
 
   async atualizarStatus(req: Request, res: Response): Promise<Response> {
-    const { id } = req.params;
-    const { condominio_id, ativo } = req.body;
+    const { usuario_id, condominio_id, ativo } = req.body;
     const result = await this.alterarStatus.execute(
-      String(id),
-      condominio_id,
+      usuario_id,
+      String(condominio_id),
       ativo,
     );
     return res.json(result);

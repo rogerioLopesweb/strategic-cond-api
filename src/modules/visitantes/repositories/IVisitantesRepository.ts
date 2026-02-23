@@ -12,8 +12,15 @@ export interface IVisitantesRepository {
   updateVisitante(visitante: Visitante): Promise<void>;
 
   // --- Métodos de Acesso (Visitas) ---
-  registrarEntrada(visita: Visita): Promise<void>;
-  registrarSaida(visitaId: string, dataSaida: Date): Promise<void>;
+  // ✅ Adicionado o operadorId para o Histórico de Auditoria
+  registrarEntrada(visita: Visita, operadorId: string): Promise<void>;
+
+  // ✅ Adicionado o operadorId para o Histórico de Auditoria
+  registrarSaida(
+    visitaId: string,
+    dataSaida: Date,
+    operadorId: string,
+  ): Promise<void>;
 
   // --- Método de Listagem com Filtros e Paginação ---
   listar(

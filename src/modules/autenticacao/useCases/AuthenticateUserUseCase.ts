@@ -56,9 +56,11 @@ export class AuthenticateUserUseCase {
     // 5. Gera Token (Incluindo os dados extras no payload se necessário)
     const token = this.tokenProvider.generateToken({
       id: usuario.id,
+      nome: usuario.props.nome_completo, // 🚀 AQUI! Injetando o nome para o Otto ler
+      condominio_id: condominios.length > 0 ? condominios[0].id : null, // 🚀 Injetando o condomínio principal
       isMaster,
       conta_id,
-      perfil: condominios.length > 0 ? condominios[0].perfil : null, // Pega o primeiro perfil ou null
+      perfil: condominios.length > 0 ? condominios[0].perfil : null,
     });
 
     // 6. ✅ Retorno Preenchido

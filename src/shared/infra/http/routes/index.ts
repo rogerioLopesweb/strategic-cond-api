@@ -8,8 +8,10 @@ import condominiosRouter from "@modules/condominios/routes/condominio.routes";
 import unidadesRouter from "@modules/unidades/routes/unidade.routes";
 import entregasRouter from "@modules/entregas/routes/entrega.routes";
 import notificacoesRouter from "@modules/notificacoes/routes/notificacao.routes";
-// ✅ Novo Módulo
 import visitantesRouter from "@modules/visitantes/routes/visitantes.routes";
+import assistenteRouter from "@modules/assistente/routes/assistente.routes";
+// ✅ Novo Módulo: Base de Conhecimento (Regras e Apoio)
+import baseConhecimentoRouter from "@modules/base_conhecimento/routes/baseConhecimento.routes";
 
 const routes = Router();
 
@@ -22,7 +24,7 @@ routes.get("/health", (req, res) => {
     status: "ok",
     timestamp: new Date().toISOString(),
     service: "StrategicCond-API",
-    version: "3.1.0 (SOLID - Entregas, Notificações & Visitantes)", // Atualizei a versão
+    version: "3.3.0 (SOLID - Entregas, Visitantes, IA & Base de Conhecimento)", // ✅ Atualizado
   });
 });
 
@@ -66,6 +68,18 @@ routes.use("/api/notificacoes", notificacoesRouter);
  * Gestão de entrada/saída de visitantes e prestadores
  */
 routes.use("/api/visitantes", visitantesRouter);
+
+/**
+ * 🤖 Assistente Virtual (IA)
+ * Chat inteligente para porteiros e moradores (Otto)
+ */
+routes.use("/api/assistente", assistenteRouter);
+
+/**
+ * 📚 Base de Conhecimento
+ * Gestão de Regras, FAQs e Contatos Úteis alimentando o Otto
+ */
+routes.use("/api/base-conhecimento", baseConhecimentoRouter);
 
 // 🚀 Próximas expansões planejadas:
 // routes.use("/api/reservas", reservasRouter);

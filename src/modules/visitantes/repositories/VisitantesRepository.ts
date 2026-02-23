@@ -72,7 +72,7 @@ export class VisitantesRepository implements IVisitantesRepository {
   // 2. GESTÃO DE ACESSOS (VISITAS)
   // =================================================================
 
-  async registrarEntrada(visita: Visita): Promise<void> {
+  async registrarEntrada(visita: Visita, operadorId: string): Promise<void> {
     const query = `
       INSERT INTO visitas (
         id, 
@@ -80,34 +80,46 @@ export class VisitantesRepository implements IVisitantesRepository {
         visitante_id, 
         unidade_id, 
         autorizado_por_usuario_id, 
-        placa_veiculo, 
+        placa_veiculo,
+        empresa_prestadora, -- ✅ Coluna adicionada 
         observacoes, 
         status, 
-        data_entrada
+        data_entrada,
+        operador_entrada_id 
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) -- ✅ Agora são 11 parâmetros
     `;
 
     await db.query(query, [
       visita.id,
       visita.props.condominio_id,
       visita.props.visitante_id,
-      visita.props.unidade_id || null, // Se for na Adm, unidade é null
-      visita.props.autorizado_por_id || null,
+      visita.props.unidade_id || null,
+      visita.props.autorizado_por_id || null, // ID do morador (se for ele quem autorizou pelo app)
       visita.props.placa_veiculo || null,
+      visita.props.empresa_prestadora || null, // ✅ Valor salvo no banco
       visita.props.observacoes || null,
-      "aberta", // Força o status inicial
+      "aberta",
       new Date(),
+      operadorId, // ID do usuário logado (Porteiro/Admin)
     ]);
   }
 
-  async registrarSaida(visitaId: string, dataSaida: Date): Promise<void> {
+  async registrarSaida(
+    visitaId: string,
+    dataSaida: Date,
+    operadorId: string,
+  ): Promise<void> {
     const query = `
       UPDATE visitas 
-      SET data_saida = $1, status = 'finalizada'
+      SET 
+        data_saida = $1, 
+        status = 'finalizada',
+        operador_saida_id = $3 -- ✅ Campo de auditoria adicionado
       WHERE id = $2
     `;
-    await db.query(query, [dataSaida, visitaId]);
+
+    await db.query(query, [dataSaida, visitaId, operadorId]);
   }
 
   /**
@@ -136,6 +148,9 @@ export class VisitantesRepository implements IVisitantesRepository {
       FROM visitas v
       INNER JOIN visitantes vis ON v.visitante_id = vis.id
       LEFT JOIN unidades u ON v.unidade_id = u.id
+      LEFT JOIN usuarios u_auth ON v.autorizado_por_usuario_id = u_auth.id
+      LEFT JOIN usuarios op_in ON v.operador_entrada_id = op_in.id
+      LEFT JOIN usuarios op_out ON v.operador_saida_id = op_out.id
       WHERE v.condominio_id = $1
     `;
 
@@ -180,12 +195,17 @@ export class VisitantesRepository implements IVisitantesRepository {
         v.data_saida,
         v.status,
         v.placa_veiculo,
+        v.observacoes,
+        v.empresa_prestadora,
         vis.nome_completo as nome_visitante,
         vis.cpf as cpf_visitante,
         vis.foto_url,
         vis.tipo_padrao as tipo,
         u.bloco,
-        u.numero_unidade as unidade
+        u.numero_unidade as unidade,
+        u_auth.nome_completo as morador_nome,
+        op_in.nome_completo as operador_entrada_nome,
+        op_out.nome_completo as operador_saida_nome
       ${queryBase} 
       ORDER BY v.data_entrada DESC 
       LIMIT $${count++} OFFSET $${count++}

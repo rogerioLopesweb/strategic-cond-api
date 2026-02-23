@@ -1,12 +1,12 @@
 import { ICondominioRepository } from "../repositories/ICondominioRepository";
 import { IListCondominioFilters } from "../dtos/condominio.dto";
 import { AppError } from "@shared/errors/AppError";
-import { UsuarioAuth } from "@modules/autenticacao/schemas/authSchema";
+import { IUsuarioAuth } from "@modules/autenticacao/dtos/IAuthDTOs";
 
 export class ListarCondominiosUseCase {
   constructor(private repository: ICondominioRepository) {}
 
-  async execute(usuario: UsuarioAuth, filters: IListCondominioFilters) {
+  async execute(usuario: IUsuarioAuth, filters: IListCondominioFilters) {
     if (!usuario || !usuario.id) {
       throw new AppError("Usuário não autenticado.", 401);
     }

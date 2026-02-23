@@ -104,7 +104,7 @@ export class UnidadeRepository {
    */
   async buscarMoradores(filters: BuscarMoradoresDTO) {
     const query = `
-      SELECT u.id AS usuario_id, u.nome_completo AS "Nome", uu.tipo_vinculo AS "Tipo",
+      SELECT uu.unidade_id, u.id AS usuario_id, u.nome_completo AS "Nome", uu.tipo_vinculo AS "Tipo",
              uu.status as status, TO_CHAR(uu.data_entrada, 'DD/MM/YYYY') as data_entrada
       FROM unidade_usuarios uu
       INNER JOIN usuarios u ON uu.usuario_id = u.id

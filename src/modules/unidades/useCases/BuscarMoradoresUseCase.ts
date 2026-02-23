@@ -11,7 +11,6 @@ export class BuscarMoradoresUseCase {
     if (moradores.length === 0) {
       throw new AppError("Nenhum morador encontrado para esta unidade.", 404);
     }
-
     return moradores;
   }
 }

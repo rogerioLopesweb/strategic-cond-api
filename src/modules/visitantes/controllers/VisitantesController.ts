@@ -5,7 +5,7 @@ import { AppError } from "@shared/errors/AppError";
 
 export class VisitantesController {
   async entrada(req: Request, res: Response) {
-    // 1. Extrai o usuário e garante a autenticação
+    // 1. Extrai o usuário logado (porteiro/admin) e garante a autenticação
     const usuario = getAuthUser(req);
 
     const registrarEntrada = VisitantesFactory.makeRegistrarEntrada();
@@ -22,22 +22,36 @@ export class VisitantesController {
       );
     }
 
+    // 🧠 REGRA DE NEGÓCIO DE AUTORIZAÇÃO:
+    let autorizadoPor = req.body.autorizado_por_id;
+
+    // Se a visita é para a Administração (não tem unidade nem morador),
+    // o próprio porteiro (usuário logado) é quem assina a autorização.
+    if (!autorizadoPor && !req.body.unidade_id) {
+      autorizadoPor = usuario.id;
+    }
+
     const visita = await registrarEntrada.execute({
       ...req.body,
       condominio_id: targetCondominioId,
-      autorizado_por_id: usuario.id, // 🔥 Importante: Grava quem autorizou/registrou na portaria
+      autorizado_por_id: autorizadoPor, // ✅ Morador (se apto) ou Porteiro (se ADM)
+      operador_id: usuario.id, // ✅ SEMPRE o Porteiro (Auditoria real)
     });
 
     return res.status(201).json({ success: true, id: visita.id });
   }
 
   async saida(req: Request, res: Response) {
+    // ✅ Extrai o usuário logado para carimbar a saída
+    const usuario = getAuthUser(req);
     const { id } = req.params;
+
     const registrarSaida = VisitantesFactory.makeRegistrarSaida();
 
     await registrarSaida.execute({
       id,
       dataSaida: new Date(),
+      operador_id: usuario.id, // ✅ Passando para o UseCase auditar
     });
 
     return res.status(200).json({ success: true });
@@ -88,5 +102,25 @@ export class VisitantesController {
     );
 
     return res.json(result);
+  }
+
+  // ✅ Novo método:
+  async buscarPorCpf(req: Request, res: Response) {
+    const { cpf } = req.params;
+
+    if (!cpf) {
+      throw new AppError("CPF é obrigatório.", 400);
+    }
+
+    const useCase = VisitantesFactory.makeBuscarPorCpf();
+    const visitante = await useCase.execute(cpf);
+
+    // Se o visitante for novo (não existe no banco), retornamos 404 (Not Found).
+    // O Axios no Frontend vai cair no catch(err) e retornar "null" silenciosamente para não travar a tela.
+    if (!visitante) {
+      return res.status(404).json({ message: "Visitante não encontrado." });
+    }
+
+    return res.status(200).json(visitante);
   }
 }

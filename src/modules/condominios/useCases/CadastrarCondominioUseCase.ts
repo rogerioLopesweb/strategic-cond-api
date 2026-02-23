@@ -2,14 +2,14 @@ import { ICondominioRepository } from "../repositories/ICondominioRepository";
 import { ICreateCondominioDTO } from "../dtos/condominio.dto";
 import { AppError } from "@shared/errors/AppError";
 import { Condominio } from "../entities/Condominio";
-import { UsuarioAuth } from "@modules/autenticacao/schemas/authSchema";
+import { IUsuarioAuth } from "@modules/autenticacao/dtos/IAuthDTOs";
 
 export class CadastrarCondominioUseCase {
   constructor(private repository: ICondominioRepository) {}
 
   async execute(
     dados: ICreateCondominioDTO,
-    usuario: UsuarioAuth,
+    usuario: IUsuarioAuth,
   ): Promise<Condominio> {
     // Regra: Apenas usuários Master podem cadastrar novos condomínios
     if (!usuario.isMaster) {

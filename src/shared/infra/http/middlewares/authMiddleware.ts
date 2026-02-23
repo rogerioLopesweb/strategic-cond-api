@@ -1,12 +1,12 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { PermissionService } from "../../services/permissionService";
-import { contextCondominioSchema } from "../../../../modules/usuarios/schemas/usuarioSchema";
-import { UsuarioAuth } from "../../../../modules/autenticacao/schemas/authSchema"; // 🎯 Import necessário
+import { contextCondominioSchema } from "@modules/usuarios/schemas/usuarioSchema";
+import { IUsuarioAuth } from "@modules/autenticacao/dtos/IAuthDTOs"; // 🎯 Import necessário
 
 // 🛡️ Interface local para garantir que o TS reconheça usuario e usuario_id
 interface AuthenticatedRequest extends Request {
-  usuario?: UsuarioAuth;
+  usuario?: IUsuarioAuth;
   usuario_id?: string;
 }
 
@@ -32,6 +32,9 @@ export const verificarToken = async (
     const decoded = jwt.verify(token, JWT_SECRET) as {
       id: string;
       conta_id?: string;
+      nome?: string; // 👈 Agora esperamos o nome do token
+      condominio_id?: string; // 👈 E o condominio base
+      perfil?: string;
     };
 
     // ✅ Agora o TS permite estas atribuições sem erro
@@ -40,6 +43,9 @@ export const verificarToken = async (
       id: decoded.id,
       conta_id: String(decoded.conta_id || ""),
       isMaster: false,
+      nome: decoded.nome || "Usuário", // Fallback caso seja um token gerado antes da nossa atualização
+      condominio_id: decoded.condominio_id || "",
+      perfil: decoded.perfil || "",
     };
 
     const contaIdDono = await permissionService.buscarContaMaster(decoded.id);

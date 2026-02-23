@@ -13,6 +13,7 @@ export class Visita {
     data_saida?: Date | null;
 
     placa_veiculo?: string | null;
+    empresa_prestadora?: string | null; // ✅ CAMPO ADICIONADO AQUI
     status: StatusVisita;
     observacoes?: string | null;
   };

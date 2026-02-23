@@ -17,11 +17,3 @@ export const loginSchema = registry.register(
 );
 
 export type LoginDTO = z.infer<typeof loginSchema>;
-
-// Interface para o usuário injetado pelo middleware (Auth)
-export interface UsuarioAuth {
-  id: string;
-  conta_id: string;
-  perfil?: string;
-  isMaster?: boolean;
-}

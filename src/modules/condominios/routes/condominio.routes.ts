@@ -75,9 +75,9 @@ registry.registerPath({
 
 router.use(verificarToken); // Aplica o middleware de autenticação a todas as rotas
 
-router.get("/", (req, res) => controller.index(req, res)); // Rota de listagem unificada
-router.post("/", (req, res) => controller.store(req, res));
-router.get("/:id", (req, res) => controller.show(req, res));
-router.put("/:id", (req, res) => controller.update(req, res));
+router.get("/", verificarToken, (req, res) => controller.index(req, res)); // Rota de listagem unificada
+router.post("/", verificarToken, (req, res) => controller.store(req, res));
+router.get("/:id", verificarToken, (req, res) => controller.show(req, res));
+router.put("/:id", verificarToken, (req, res) => controller.update(req, res));
 
 export default router;

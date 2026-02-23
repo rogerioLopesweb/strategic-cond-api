@@ -45,3 +45,7 @@ export const listVisitantesSchema = z.object({
     )
     .openapi({ type: "string", format: "date-time" }),
 });
+
+export const buscarCpfParamsSchema = z.object({
+  cpf: z.string().regex(/^\d{11}$/, "O CPF deve conter exatamente 11 números."),
+});

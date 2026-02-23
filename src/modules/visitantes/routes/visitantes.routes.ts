@@ -7,6 +7,7 @@ import {
   registrarEntradaSchema,
   registrarSaidaSchema,
   listVisitantesSchema,
+  buscarCpfParamsSchema,
 } from "@modules/visitantes/schemas/visitanteSchema";
 
 const router = Router();
@@ -127,7 +128,69 @@ registry.registerPath({
     },
   },
 });
-
 router.get("/", verificarToken, (req, res) => controller.listar(req, res));
+
+// 4. ROTA DE BUSCA POR CPF (GET) - Para auto-preenchimento
+registry.registerPath({
+  method: "get",
+  path: "/api/visitantes/cpf/{cpf}", // ⚠️ Atenção: OpenAPI usa chaves {} para params
+  tags: ["Visitantes"],
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: buscarCpfParamsSchema,
+  },
+  responses: {
+    200: {
+      description: "Visitante encontrado com sucesso",
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            properties: {
+              id: { type: "string", format: "uuid" },
+              nome_completo: { type: "string" },
+              cpf: { type: "string" },
+              rg: { type: "string", nullable: true },
+              foto_url: { type: "string", nullable: true },
+              tipo_padrao: {
+                type: "string",
+                enum: ["visitante", "prestador", "corretor"],
+              },
+            },
+          },
+        },
+      },
+    },
+    404: {
+      description: "Visitante não encontrado (Primeira vez no condomínio)",
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            properties: {
+              message: { type: "string", example: "Visitante não encontrado." },
+            },
+          },
+        },
+      },
+    },
+    400: {
+      description: "CPF inválido",
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            properties: {
+              message: { type: "string", example: "CPF inválido." },
+            },
+          },
+        },
+      },
+    },
+  },
+});
+router.get("/cpf/:cpf", verificarToken, (req, res) =>
+  controller.buscarPorCpf(req, res),
+);
 
 export default router;

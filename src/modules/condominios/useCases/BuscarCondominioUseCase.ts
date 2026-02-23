@@ -1,12 +1,12 @@
 import { ICondominioRepository } from "../repositories/ICondominioRepository";
 import { AppError } from "@shared/errors/AppError";
-import { UsuarioAuth } from "@modules/autenticacao/schemas/authSchema";
+import { IUsuarioAuth } from "@modules/autenticacao/dtos/IAuthDTOs";
 import { Condominio } from "../entities/Condominio";
 
 export class BuscarCondominioUseCase {
   constructor(private repository: ICondominioRepository) {}
 
-  async execute(id: string, usuario: UsuarioAuth): Promise<Condominio> {
+  async execute(id: string, usuario: IUsuarioAuth): Promise<Condominio> {
     let condominio: Condominio | null = null;
 
     // Se for um usuário Master/Admin, busca pelo ID e depois valida a conta.

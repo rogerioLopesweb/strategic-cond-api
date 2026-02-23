@@ -1,10 +1,10 @@
 import { Request, Response } from "express";
 import { AuthFactory } from "../factories/AuthFactory";
-import { UsuarioAuth } from "../schemas/authSchema";
+import { IUsuarioAuth } from "../dtos/IAuthDTOs";
 
 // Interface estendida para incluir o objeto 'usuario' populado pelo middleware
 interface AuthenticatedRequest extends Request {
-  usuario?: UsuarioAuth;
+  usuario?: IUsuarioAuth;
 }
 
 export class AuthController {

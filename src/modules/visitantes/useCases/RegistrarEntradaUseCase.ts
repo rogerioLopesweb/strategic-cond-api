@@ -15,9 +15,10 @@ interface IEntradaRequest {
   // Dados da Visita
   condominio_id: string;
   unidade_id?: string; // Opcional (pode ser visita à ADM)
-  autorizado_por_id?: string; // ID do usuário que autorizou
+  autorizado_por_id?: string; // ID do morador/usuário que autorizou
   placa_veiculo?: string;
   observacoes?: string;
+  operador_id: string; // ✅ OBRIGATÓRIO: ID de quem está registrando (Porteiro/Admin)
 }
 
 export class RegistrarEntradaUseCase {
@@ -40,9 +41,6 @@ export class RegistrarEntradaUseCase {
       await this.visitantesRepository.createVisitante(visitante);
     } else {
       // --- B: Já existe -> Atualiza dados (ex: mudou corte de cabelo/foto, ou RG) ---
-      // Aqui você pode decidir se atualiza sempre ou só se vier dados novos.
-      // Vamos atualizar para manter o cadastro fresco.
-
       // Nota: Não alteramos o CPF aqui, pois é a chave de busca.
       // Recriamos a entidade com o mesmo ID para o update
       const visitanteAtualizado = new Visitante(
@@ -72,7 +70,8 @@ export class RegistrarEntradaUseCase {
     });
 
     // 3. Persistir a Entrada
-    await this.visitantesRepository.registrarEntrada(visita);
+    // ✅ Passando o operador_id para carimbar quem abriu a cancela
+    await this.visitantesRepository.registrarEntrada(visita, dados.operador_id);
 
     return visita;
   }

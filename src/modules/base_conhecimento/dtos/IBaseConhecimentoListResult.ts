@@ -2,5 +2,10 @@ import { BaseConhecimento } from "../entities/BaseConhecimento";
 
 export interface IBaseConhecimentoListResult {
   data: BaseConhecimento[];
-  total: number;
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    total_pages: number;
+  };
 }

@@ -111,9 +111,17 @@ export class BaseConhecimentoRepository implements IBaseConhecimentoRepository {
       countPromise,
     ]);
 
+    const totalRecords = countResult.rows[0].total;
+
+    // ✅ Retorno padronizado para o Frontend renderizar a paginação
     return {
       data: dataResult.rows.map((row) => new BaseConhecimento(row)),
-      total: countResult.rows[0].total,
+      pagination: {
+        total: totalRecords,
+        page: Number(page),
+        limit: Number(limit),
+        total_pages: Math.ceil(totalRecords / limit),
+      },
     };
   }
 

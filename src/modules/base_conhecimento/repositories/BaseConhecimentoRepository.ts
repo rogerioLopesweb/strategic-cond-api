@@ -70,7 +70,9 @@ export class BaseConhecimentoRepository implements IBaseConhecimentoRepository {
     if (result.rowCount === 0) return null;
     return new BaseConhecimento(result.rows[0]);
   }
-
+  // ====================================================================
+  // 🧠 MÉTODO DE LISTAGEM COM FILTROS E PAGINAÇÃ O
+  //
   async findAll(
     condominio_id: string,
     filters: IListBaseConhecimentoFilters,

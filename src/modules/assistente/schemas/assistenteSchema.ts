@@ -11,10 +11,18 @@ export const chatAssistenteSchema = registry.register(
       .string()
       .min(1, "A mensagem não pode estar vazia")
       .openapi({ example: "Bom dia, chegou alguma encomenda para o 101 A?" }),
+
     condominio_id: z.string().trim().uuid().optional().openapi({
       example: "123e4567-e89b-12d3-a456-426614174000",
       description:
         "Opcional no body caso seja enviado via header x-condominio-id",
+    }),
+
+    // 👇 NOVO: Adicionado o ID da Sessão para manter a memória da conversa
+    sessao_id: z.string().trim().uuid().optional().openapi({
+      example: "987f6543-e21b-34c5-b678-426614174111",
+      description:
+        "ID da sessão atual para manter o contexto. Se não for enviado, uma nova conversa será iniciada.",
     }),
   }),
 );

@@ -20,7 +20,7 @@ export interface CreateUsuarioDTO {
   foto_base64?: string;
   unidades?: Array<{
     identificador_bloco: string;
-    numero: string;
+    numero_unidade: string;
     tipo_vinculo: string;
   }>;
 }

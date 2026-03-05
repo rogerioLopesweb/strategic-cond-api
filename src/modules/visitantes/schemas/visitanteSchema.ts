@@ -2,15 +2,25 @@ import { z } from "zod";
 import { registry } from "@shared/infra/http/openapi/registry";
 
 export const registrarEntradaSchema = z.object({
-  nome_completo: z.string().min(3, "Nome é obrigatório"),
-  cpf: z.string().min(11, "CPF inválido"),
-  rg: z.string().optional(),
-  foto_url: z.string().url().optional(),
+  // Dados do Visitante
+  nome_completo: z.string().min(3, "O nome completo deve ter no mínimo 3 caracteres"),
+  cpf: z.string().regex(/^\d{11}$/, "O CPF deve conter exatamente 11 números"),
+  rg: z.string().optional().nullable(),
+  
+  // ✅ AJUSTE: O App envia Base64 agora, não uma URL. 
+  // Removido .url() para não barrar a string da foto.
+  foto_base64: z.string().optional().nullable(),
+  
   tipo_padrao: z.enum(["visitante", "prestador", "corretor"]),
-  unidade_id: z.string().uuid().optional(),
-  autorizado_por_id: z.string().uuid().optional(),
-  placa_veiculo: z.string().optional(),
-  observacoes: z.string().optional(),
+  empresa: z.string().optional().nullable(),
+
+  // Dados da Visita
+  condominio_id: z.string().uuid("ID do condomínio inválido"),
+  unidade_id: z.string().uuid().optional().nullable(),
+  autorizado_por_id: z.string().uuid().optional().nullable(),
+  placa_veiculo: z.string().optional().nullable(),
+  empresa_prestadora: z.string().optional().nullable(),
+  observacoes: z.string().optional().nullable(),
 });
 
 export const registrarSaidaSchema = z.object({
@@ -18,34 +28,26 @@ export const registrarSaidaSchema = z.object({
 });
 
 export const listVisitantesSchema = z.object({
-  // Paginação com coerção de string para number (vinda da Query)
-  page: z
-    .preprocess((val) => (val ? Number(val) : 1), z.number().min(1).default(1))
-    .openapi({ type: "integer", example: 1 }),
+  // ✅ MELHORIA: Usando z.coerce.number() para converter string da Query automaticamente
+  page: z.coerce.number().min(1).default(1),
+  limit: z.coerce.number().min(1).max(100).default(10),
 
-  limit: z
-    .preprocess(
-      (val) => (val ? Number(val) : 10),
-      z.number().min(1).max(100).default(10),
-    )
-    .openapi({ type: "integer", example: 10 }),
+  // ✅ Adicionados filtros que o Controller utiliza
+  condominio_id: z.string().uuid().optional(),
+  bloco: z.string().optional(),
+  unidade: z.string().optional(),
+  cpf: z.string().optional(),
+  status: z.enum(["aberta", "finalizada", "cancelada"]).optional(),
 
-  // Filtros de data opcionais
-  dataInicio: z
-    .preprocess(
-      (val) => (val ? new Date(val as string) : undefined),
-      z.date().optional(),
-    )
-    .openapi({ type: "string", format: "date-time" }),
-
-  dataFim: z
-    .preprocess(
-      (val) => (val ? new Date(val as string) : undefined),
-      z.date().optional(),
-    )
-    .openapi({ type: "string", format: "date-time" }),
+  // Filtros de data
+  dataInicio: z.coerce.date().optional(),
+  dataFim: z.coerce.date().optional(),
 });
 
 export const buscarCpfParamsSchema = z.object({
+  // Garante que o CPF chegue limpo (apenas números) para a busca
   cpf: z.string().regex(/^\d{11}$/, "O CPF deve conter exatamente 11 números."),
 });
+
+// Registros para Documentação OpenAPI (Swagger) se estiver usando
+registry.register("RegistrarEntrada", registrarEntradaSchema);

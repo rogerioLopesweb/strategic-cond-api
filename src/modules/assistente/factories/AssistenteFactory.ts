@@ -1,8 +1,11 @@
 import { AssistenteController } from "../controllers/AssistenteController";
 import { EnviarMensagemAssistenteUseCase } from "../useCases/EnviarMensagemAssistenteUseCase";
 import { ConsultarRegimentoTool } from "../tools/ConsultarRegimentoTool";
-// 👇 Importamos o repositório real da nossa Base de Conhecimento
 import { BaseConhecimentoRepository } from "@modules/base_conhecimento/repositories/BaseConhecimentoRepository";
+
+// 👇 NOVO: Importamos o repositório responsável por salvar as sessões e mensagens no banco
+import { AssistenteRepository } from "../repositories/AssistenteRepository";
+import { BuscarHistoricoUseCase } from "../useCases/BuscarHistoricoUseCase";
 
 // 👇 Importações de Entregas comentadas para ficarem em Standby
 // import { ListarEntregasUseCase } from "@modules/entregas/useCases/ListarEntregasUseCase";
@@ -20,7 +23,7 @@ export function makeAssistenteController(): AssistenteController {
   // =========================================================
   // 📖 MÓDULO DE REGRAS E REGIMENTO (ATIVO)
   // =========================================================
-  // 1. Instanciamos a conexão com o banco de dados
+  // 1. Instanciamos a conexão com o banco de dados das regras
   const baseConhecimentoRepository = new BaseConhecimentoRepository();
 
   // 2. Injetamos o banco dentro da ferramenta do Otto
@@ -28,11 +31,29 @@ export function makeAssistenteController(): AssistenteController {
     baseConhecimentoRepository,
   );
 
-  // 🧠 Injeta a lista de ferramentas (Skills) no cérebro do assistente
-  const enviarMensagemUseCase = new EnviarMensagemAssistenteUseCase([
-    consultarRegimentoTool, // Apenas o Regimento está ativo agora
-    // verificarEncomendasTool, // <- Descomente no futuro quando quiser reativar
-  ]);
+  // =========================================================
+  // 🧠 MÓDULO DO ASSISTENTE (CÉREBRO E MEMÓRIA)
+  // =========================================================
+  // 3. Instanciamos o repositório que gerencia as sessões e o histórico do chat
+  const assistenteRepository = new AssistenteRepository();
 
-  return new AssistenteController(enviarMensagemUseCase);
+  // 4. Injeta a lista de ferramentas (Skills) e a MEMÓRIA (Repository) no cérebro do assistente
+  const enviarMensagemUseCase = new EnviarMensagemAssistenteUseCase(
+    [
+      consultarRegimentoTool, // Apenas o Regimento está ativo agora
+      // verificarEncomendasTool, // <- Descomente no futuro quando quiser reativar
+    ],
+    assistenteRepository, // 👈 A dependência injetada que dá memória ao Otto na hora de falar!
+  );
+
+  // 👇 5. Instancia o UseCase de Histórico (para carregar a tela quando o usuário abre o app)
+  const buscarHistoricoUseCase = new BuscarHistoricoUseCase(
+    assistenteRepository,
+  );
+
+  // 👇 6. Injeta os DOIS UseCases no Controller
+  return new AssistenteController(
+    enviarMensagemUseCase,
+    buscarHistoricoUseCase,
+  );
 }

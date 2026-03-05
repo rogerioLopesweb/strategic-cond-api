@@ -65,7 +65,11 @@ export class UsuarioRepository implements IUsuarioRepository {
       limit,
     };
   }
-  async cadastrarCompleto(dados: CreateUsuarioDTO, senhaHash: string) {
+  async cadastrarCompleto(
+    dados: CreateUsuarioDTO,
+    senhaHash: string,
+    dataFormatada?: string | null,
+  ) {
     const client = await db.connect();
     try {
       await client.query("BEGIN");
@@ -80,7 +84,7 @@ export class UsuarioRepository implements IUsuarioRepository {
           dados.email,
           dados.telefone,
           senhaHash,
-          dados.data_nascimento || null,
+          dataFormatada || null,
           dados.contato_emergencia || null,
         ],
       );
@@ -95,12 +99,12 @@ export class UsuarioRepository implements IUsuarioRepository {
         for (const uni of dados.unidades) {
           const uniDb = await client.query(
             `SELECT id FROM unidades WHERE condominio_id = $1 AND TRIM(bloco) = TRIM($2) AND TRIM(numero_unidade) = TRIM($3)`,
-            [dados.condominio_id, uni.identificador_bloco, uni.numero],
+            [dados.condominio_id, uni.identificador_bloco, uni.numero_unidade],
           );
 
           if (uniDb.rows.length === 0) {
             throw new Error(
-              `Unidade ${uni.identificador_bloco}-${uni.numero} inexistente.`,
+              `Unidade ${uni.identificador_bloco}-${uni.numero_unidade} inexistente.`,
             );
           }
 
@@ -231,7 +235,7 @@ export class UsuarioRepository implements IUsuarioRepository {
         for (const uni of dados.unidades) {
           const uniDb = await client.query(
             `SELECT id FROM unidades WHERE condominio_id = $1 AND bloco = $2 AND numero_unidade = $3`,
-            [dados.condominio_id, uni.identificador_bloco, uni.numero],
+            [dados.condominio_id, uni.identificador_bloco, uni.numero_unidade],
           );
 
           if (uniDb.rows.length > 0) {

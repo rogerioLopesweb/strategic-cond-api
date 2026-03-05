@@ -4,7 +4,7 @@
   "description": "API para o projeto StrategicCond",
   "main": "dist/shared/infra/http/server.js",
   "scripts": {
-    "build": "rimraf dist && tsc",
+    "build": "rimraf dist && tsc && tsc-alias",
     "start": "node dist/shared/infra/http/server.js",
     "dev": "nodemon src/shared/infra/http/server.ts",
     "lint": "eslint src --ext .ts",
@@ -16,6 +16,11 @@
   "author": "Rogerio Lopes",
   "license": "ISC",
   "type": "commonjs",
+  "_moduleAliases": {
+    "@modules": "dist/modules",
+    "@shared": "dist/shared",
+    "@config": "dist/config"
+  },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^7.3.4",
     "@aws-sdk/client-s3": "^3.893.0",
@@ -28,6 +33,7 @@
     "express": "^4.19.2",
     "express-async-errors": "^3.1.1",
     "jsonwebtoken": "^9.0.3",
+    "module-alias": "^2.3.4",
     "morgan": "^1.10.1",
     "multer": "^2.0.2",
     "nodemailer": "^7.0.12",
@@ -59,6 +65,7 @@
     "prettier": "^3.8.1",
     "rimraf": "^5.0.5",
     "ts-node": "^10.9.2",
+    "tsc-alias": "^1.8.10",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.3.3"
   }

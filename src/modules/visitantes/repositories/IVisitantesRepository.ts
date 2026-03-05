@@ -8,12 +8,12 @@ export { IVisitaDetalhadaDTO };
 export interface IVisitantesRepository {
   // --- Métodos de Pessoas (Visitantes) ---
   findByCpf(cpf: string): Promise<Visitante | null>;
-  createVisitante(visitante: Visitante): Promise<void>;
+  createVisitante(visitante: Visitante): Promise<Visitante>;
   updateVisitante(visitante: Visitante): Promise<void>;
 
   // --- Métodos de Acesso (Visitas) ---
   // ✅ Adicionado o operadorId para o Histórico de Auditoria
-  registrarEntrada(visita: Visita, operadorId: string): Promise<void>;
+  registrarEntrada(visita: Visita, operadorId: string): Promise<Visita>;
 
   // ✅ Adicionado o operadorId para o Histórico de Auditoria
   registrarSaida(

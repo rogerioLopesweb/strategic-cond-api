@@ -2,26 +2,19 @@ import { db } from "@shared/infra/database/connection";
 import { Visitante } from "../entities/Visitante";
 import { Visita } from "../entities/Visita";
 import { IVisitantesRepository } from "./IVisitantesRepository";
-import { IVisitaDetalhadaDTO } from "../dtos/IVisitaDetalhadaDTO";
-import { IVisitasPaginadasDTO } from "../dtos/IVisitasPaginadasDTO";
-import { ListVisitasFiltersDTO } from "../dtos/ListVisitasFiltersDTO";
 
 export class VisitantesRepository implements IVisitantesRepository {
   // =================================================================
-  // 1. GESTÃO DE PESSOAS (VISITANTES)
+  // 1. GESTÃO DE PESSOAS (VISITANTES) - Tabela: visitantes
   // =================================================================
 
   async findByCpf(cpf: string): Promise<Visitante | null> {
-    // Remove pontuação para buscar limpo (se seu banco salva limpo)
-    // const cpfLimpo = cpf.replace(/\D/g, "");
-
     const query = `SELECT * FROM visitantes WHERE cpf = $1 LIMIT 1`;
-    const result = await db.query(query, [cpf]);
+    const result = await db.query(query, [cpf.replace(/\D/g, "")]);
 
     if (result.rows.length === 0) return null;
 
     const row = result.rows[0];
-    // Reconstrói a Entidade
     return new Visitante(
       {
         nome_completo: row.nome_completo,
@@ -29,34 +22,38 @@ export class VisitantesRepository implements IVisitantesRepository {
         rg: row.rg,
         foto_url: row.foto_url,
         tipo_padrao: row.tipo_padrao,
+        empresa: row.empresa, // ✅ Campo recuperado do cadastro fixo
         created_at: row.created_at,
       },
       row.id,
     );
   }
 
-  async createVisitante(visitante: Visitante): Promise<void> {
+  async createVisitante(visitante: Visitante): Promise<Visitante> {
     const query = `
-      INSERT INTO visitantes (id, nome_completo, cpf, rg, foto_url, tipo_padrao, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO visitantes (nome_completo, cpf, rg, foto_url, tipo_padrao, empresa)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING id, created_at;
     `;
 
-    await db.query(query, [
-      visitante.id,
+    const result = await db.query(query, [
       visitante.props.nome_completo,
-      visitante.props.cpf,
+      visitante.props.cpf.replace(/\D/g, ""),
       visitante.props.rg || null,
       visitante.props.foto_url || null,
       visitante.props.tipo_padrao,
-      new Date(),
+      visitante.props.empresa || null, // ✅ Salva a empresa no cadastro da pessoa
     ]);
+
+    const { id, created_at } = result.rows[0];
+    return new Visitante({ ...visitante.props, created_at }, id);
   }
 
   async updateVisitante(visitante: Visitante): Promise<void> {
     const query = `
       UPDATE visitantes 
-      SET nome_completo = $1, rg = $2, foto_url = $3, tipo_padrao = $4, updated_at = NOW()
-      WHERE id = $5
+      SET nome_completo = $1, rg = $2, foto_url = $3, tipo_padrao = $4, empresa = $5, updated_at = NOW()
+      WHERE id = $6
     `;
 
     await db.query(query, [
@@ -64,45 +61,47 @@ export class VisitantesRepository implements IVisitantesRepository {
       visitante.props.rg || null,
       visitante.props.foto_url || null,
       visitante.props.tipo_padrao,
+      visitante.props.empresa || null,
       visitante.id,
     ]);
   }
 
   // =================================================================
-  // 2. GESTÃO DE ACESSOS (VISITAS)
+  // 2. GESTÃO DE ACESSOS (VISITAS) - Tabela: visitas
   // =================================================================
 
-  async registrarEntrada(visita: Visita, operadorId: string): Promise<void> {
+  async registrarEntrada(visita: Visita, operadorId: string): Promise<Visita> {
     const query = `
       INSERT INTO visitas (
-        id, 
         condominio_id, 
         visitante_id, 
         unidade_id, 
         autorizado_por_usuario_id, 
         placa_veiculo,
-        empresa_prestadora, -- ✅ Coluna adicionada 
+        empresa_prestadora, 
         observacoes, 
         status, 
         data_entrada,
         operador_entrada_id 
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) -- ✅ Agora são 11 parâmetros
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING id;
     `;
 
-    await db.query(query, [
-      visita.id,
+    const result = await db.query(query, [
       visita.props.condominio_id,
       visita.props.visitante_id,
       visita.props.unidade_id || null,
-      visita.props.autorizado_por_id || null, // ID do morador (se for ele quem autorizou pelo app)
+      visita.props.autorizado_por_id || null,
       visita.props.placa_veiculo || null,
-      visita.props.empresa_prestadora || null, // ✅ Valor salvo no banco
+      visita.props.empresa_prestadora || null, // ✅ Empresa específica desta visita
       visita.props.observacoes || null,
-      "aberta",
-      new Date(),
-      operadorId, // ID do usuário logado (Porteiro/Admin)
+      visita.props.status || "aberta",
+      visita.props.data_entrada || new Date(),
+      operadorId,
     ]);
+
+    return new Visita(visita.props, result.rows[0].id);
   }
 
   async registrarSaida(
@@ -112,24 +111,17 @@ export class VisitantesRepository implements IVisitantesRepository {
   ): Promise<void> {
     const query = `
       UPDATE visitas 
-      SET 
-        data_saida = $1, 
-        status = 'finalizada',
-        operador_saida_id = $3 -- ✅ Campo de auditoria adicionado
+      SET data_saida = $1, status = 'finalizada', operador_saida_id = $3 
       WHERE id = $2
     `;
-
     await db.query(query, [dataSaida, visitaId, operadorId]);
   }
 
-  /**
-   * 3. Listar visitas com filtros cumulativos e segurança Multi-tenant
-   */
-  async listar(
-    filters: ListVisitasFiltersDTO,
-    usuarioId?: string,
-    perfil?: string,
-  ) {
+  // =================================================================
+  // 3. LISTAGEM E FILTROS
+  // =================================================================
+
+  async listar(filters: any, usuarioId?: string, perfil?: string) {
     const {
       condominio_id,
       unidade,
@@ -139,11 +131,9 @@ export class VisitantesRepository implements IVisitantesRepository {
       page = 1,
       limit = 10,
     } = filters;
-
     const offset = (page - 1) * limit;
     const values: any[] = [condominio_id];
 
-    // 🔗 Base da Query: Unindo Visitas, Visitantes e Unidades
     let queryBase = `
       FROM visitas v
       INNER JOIN visitantes vis ON v.visitante_id = vis.id
@@ -156,14 +146,11 @@ export class VisitantesRepository implements IVisitantesRepository {
 
     let count = 2;
 
-    // 🛡️ SEGURANÇA: Se for morador, restringe às visitas do apartamento dele
-    // ou que ele mesmo autorizou
     if (perfil === "morador" && usuarioId) {
-      queryBase += ` AND v.autorizado_por_usuario_id = $${count++}`;
+      queryBase += ` AND (v.autorizado_por_usuario_id = $${count} OR u.id IN (SELECT unidade_id FROM usuarios_unidades WHERE usuario_id = $${count++}))`;
       values.push(usuarioId);
     }
 
-    // 🔍 FILTROS DINÂMICOS DE UNIDADE (Com TRIM e LOWER conforme você pediu)
     if (bloco) {
       queryBase += ` AND LOWER(TRIM(u.bloco)) = LOWER(TRIM($${count++}))`;
       values.push(bloco);
@@ -174,60 +161,38 @@ export class VisitantesRepository implements IVisitantesRepository {
       values.push(unidade);
     }
 
-    // 🔍 FILTRO DE CPF (Limpando a pontuação caso o front envie formatado)
     if (cpf) {
-      const cpfLimpo = cpf.replace(/\D/g, ""); // Deixa só os números
       queryBase += ` AND vis.cpf = $${count++}`;
-      values.push(cpfLimpo);
+      values.push(cpf.replace(/\D/g, ""));
     }
 
-    // 🔍 FILTRO DE STATUS ('aberta', 'finalizada', etc)
     if (status) {
       queryBase += ` AND v.status = $${count++}`;
       values.push(status);
     }
 
-    // 📝 MONTAGEM DAS QUERIES FINAIS
     const dataQuery = `
-      SELECT 
-        v.id as visita_id,
-        v.data_entrada,
-        v.data_saida,
-        v.status,
-        v.placa_veiculo,
-        v.observacoes,
-        v.empresa_prestadora,
-        vis.nome_completo as nome_visitante,
-        vis.cpf as cpf_visitante,
-        vis.foto_url,
-        vis.tipo_padrao as tipo,
-        u.bloco,
-        u.numero_unidade as unidade,
-        u_auth.nome_completo as morador_nome,
-        op_in.nome_completo as operador_entrada_nome,
-        op_out.nome_completo as operador_saida_nome
-      ${queryBase} 
-      ORDER BY v.data_entrada DESC 
-      LIMIT $${count++} OFFSET $${count++}
+      SELECT v.id as visita_id, v.data_entrada, v.data_saida, v.status, v.placa_veiculo, v.observacoes, v.empresa_prestadora,
+             vis.nome_completo as nome_visitante, vis.cpf as cpf_visitante, vis.foto_url, vis.tipo_padrao as tipo,
+             u.bloco, u.numero_unidade as unidade, u_auth.nome_completo as morador_nome,
+             op_in.nome_completo as operador_entrada_nome, op_out.nome_completo as operador_saida_nome
+      ${queryBase} ORDER BY v.data_entrada DESC LIMIT $${count++} OFFSET $${count++}
     `;
 
     const totalQuery = `SELECT COUNT(v.id) as total ${queryBase}`;
 
-    // Executa as duas em paralelo para ganhar performance
     const [resData, resTotal] = await Promise.all([
       db.query(dataQuery, [...values, limit, offset]),
       db.query(totalQuery, values),
     ]);
 
-    const totalRecords = parseInt(resTotal.rows[0].total);
-
     return {
       data: resData.rows,
       pagination: {
-        total: totalRecords,
+        total: parseInt(resTotal.rows[0].total),
         page,
         limit,
-        total_pages: Math.ceil(totalRecords / limit),
+        total_pages: Math.ceil(parseInt(resTotal.rows[0].total) / limit),
       },
     };
   }

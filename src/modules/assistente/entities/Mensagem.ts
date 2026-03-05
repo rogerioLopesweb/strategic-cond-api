@@ -1,23 +1,36 @@
 import crypto from "crypto";
 
-export type RemetenteMensagem = "usuario" | "assistente";
+export type RoleMensagem = "user" | "assistant" | "system" | "tool";
+
+// 👇 Tipo auxiliar para o construtor
+type MensagemConstructorProps = {
+  sessao_id: string;
+  role: RoleMensagem;
+  texto: string;
+  tokens_usados?: number;
+  created_at?: Date;
+};
 
 export class Mensagem {
   public readonly id: string;
 
   public props: {
-    condominio_id: string;
-    usuario_id: string;
-    remetente: RemetenteMensagem;
+    sessao_id: string;
+    role: RoleMensagem;
     texto: string;
+    tokens_usados: number;
     created_at: Date;
   };
 
-  constructor(props: Omit<Mensagem["props"], "created_at">, id?: string) {
+  // 👇 Aceita a data original vinda do banco de dados
+  constructor(props: MensagemConstructorProps, id?: string) {
     this.id = id || crypto.randomUUID();
     this.props = {
-      ...props,
-      created_at: new Date(),
+      sessao_id: props.sessao_id,
+      role: props.role,
+      texto: props.texto,
+      tokens_usados: props.tokens_usados || 0,
+      created_at: props.created_at || new Date(),
     };
   }
 }

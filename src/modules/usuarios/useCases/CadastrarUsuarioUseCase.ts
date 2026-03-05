@@ -2,6 +2,7 @@
 import { IUsuarioRepository } from "../repositories/IUsuarioRepository";
 import { IHashProvider } from "@shared/providers/HashProvider/IHashProvider";
 import { IStorageProvider } from "@shared/providers/StorageProvider/models/IStorageProvider";
+import { validarEFormatarData } from "@shared/providers/utils/datas";
 import { CreateUsuarioDTO } from "../dtos/usuario.dto";
 import { AppError } from "@shared/errors/AppError";
 
@@ -30,10 +31,18 @@ export class CadastrarUsuarioUseCase {
     const senhaPadrao = dados.cpf.replace(/\D/g, "").substring(0, 6);
     const senhaHash = await this.hashProvider.generateHash(senhaPadrao);
 
+    // 1. Validar e formatar data de nascimento se fornecida
+    let dataFormatada = null;
+    if (dados.data_nascimento) {
+      dataFormatada = validarEFormatarData(dados.data_nascimento);
+      if (!dataFormatada) throw new AppError("Data de nascimento inválida.");
+    }
+
     // 3. Persistência Transacional no Banco
     const { usuarioId } = await this.usuarioRepository.cadastrarCompleto(
       dados,
       senhaHash,
+      dataFormatada,
     );
 
     // 4. Lógica de Foto (Opcional)

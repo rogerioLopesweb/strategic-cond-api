@@ -22,6 +22,7 @@ export interface IUsuarioRepository {
   cadastrarCompleto(
     dados: CreateUsuarioDTO,
     senhaHash: string,
+    dataFormatada?: string | null,
   ): Promise<{ usuarioId: string }>;
 
   atualizarCompleto(

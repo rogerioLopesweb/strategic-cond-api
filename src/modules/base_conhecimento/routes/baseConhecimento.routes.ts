@@ -3,11 +3,12 @@ import { makeBaseConhecimentoController } from "../factories/BaseConhecimentoFac
 import { verificarToken } from "@shared/infra/http/middlewares/authMiddleware";
 import { registry } from "@shared/infra/http/openapi/registry";
 import {
-  createBaseConhecimentoSchema,
-  listBaseConhecimentoSchema,
-  updateBaseConhecimentoSchema,
+  createBaseConhecimentoBodySchema,
+  listBaseConhecimentoQuerySchema,
+  updateBaseConhecimentoBodySchema,
+  baseConhecimentoParamsSchema, // ✅ Novo
+  baseConhecimentoResponseSchema // ✅ Novo
 } from "../schemas/baseConhecimentoSchema";
-import { z } from "zod";
 
 const router = Router();
 const controller = makeBaseConhecimentoController();
@@ -22,7 +23,7 @@ registry.registerPath({
   security: [{ bearerAuth: [] }],
   request: {
     body: {
-      content: { "application/json": { schema: createBaseConhecimentoSchema } },
+      content: { "application/json": { schema: createBaseConhecimentoBodySchema } },
     },
   },
   responses: {
@@ -36,8 +37,27 @@ registry.registerPath({
   tags: ["Base de Conhecimento"],
   summary: "Lista a base de conhecimento com filtros e paginação",
   security: [{ bearerAuth: [] }],
-  request: { query: listBaseConhecimentoSchema },
+  request: { query: listBaseConhecimentoQuerySchema },
   responses: { 200: { description: "Sucesso" } },
+});
+
+// ✅ NOVO: Registro do GET Individual (Resolve o 404 do Frontend)
+registry.registerPath({
+  method: "get",
+  path: "/api/base-conhecimento/{id}",
+  tags: ["Base de Conhecimento"],
+  summary: "Busca um registro específico pelo ID",
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: baseConhecimentoParamsSchema,
+  },
+  responses: {
+    200: { 
+      description: "Sucesso",
+      content: { "application/json": { schema: baseConhecimentoResponseSchema } }
+    },
+    404: { description: "Registro não encontrado" }
+  },
 });
 
 registry.registerPath({
@@ -47,11 +67,9 @@ registry.registerPath({
   summary: "Atualiza um registro da base de conhecimento",
   security: [{ bearerAuth: [] }],
   request: {
-    params: z.object({
-      id: z.string().uuid(),
-    }),
+    params: baseConhecimentoParamsSchema,
     body: {
-      content: { "application/json": { schema: updateBaseConhecimentoSchema } },
+      content: { "application/json": { schema: updateBaseConhecimentoBodySchema } },
     },
   },
   responses: {
@@ -66,9 +84,7 @@ registry.registerPath({
   summary: "Remove um registro da base de conhecimento (Soft Delete)",
   security: [{ bearerAuth: [] }],
   request: {
-    params: z.object({
-      id: z.string().uuid(),
-    }),
+    params: baseConhecimentoParamsSchema,
   },
   responses: {
     200: { description: "Registro deletado com sucesso" },
@@ -81,10 +97,11 @@ registry.registerPath({
 router.post("/", verificarToken, (req, res) => controller.store(req, res));
 router.get("/", verificarToken, (req, res) => controller.index(req, res));
 
+// ✅ NOVO: Rota para buscar detalhe (O "Culpado" pelo erro no Frontend!)
+router.get("/:id", verificarToken, (req, res) => controller.show(req, res));
+
 // Gestão e Correção
 router.put("/:id", verificarToken, (req, res) => controller.update(req, res));
-router.delete("/:id", verificarToken, (req, res) =>
-  controller.delete(req, res),
-);
+router.delete("/:id", verificarToken, (req, res) => controller.delete(req, res));
 
 export default router;

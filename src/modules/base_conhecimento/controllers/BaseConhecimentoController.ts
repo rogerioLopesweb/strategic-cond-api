@@ -6,6 +6,7 @@ import { CadastrarBaseConhecimentoUseCase } from "../useCases/CadastrarBaseConhe
 import { ListarBaseConhecimentoUseCase } from "../useCases/ListarBaseConhecimentoUseCase";
 import { AtualizarBaseConhecimentoUseCase } from "../useCases/AtualizarBaseConhecimentoUseCase";
 import { DeletarBaseConhecimentoUseCase } from "../useCases/DeletarBaseConhecimentoUseCase";
+import { BuscarInformacaoPorIdUseCase } from "../useCases/BuscarInformacaoPorIdUseCase"; // ✅ Importado
 
 export class BaseConhecimentoController {
   constructor(
@@ -13,11 +14,32 @@ export class BaseConhecimentoController {
     private listarUseCase: ListarBaseConhecimentoUseCase,
     private atualizarUseCase: AtualizarBaseConhecimentoUseCase,
     private deletarUseCase: DeletarBaseConhecimentoUseCase,
+    private buscarPorIdUseCase: BuscarInformacaoPorIdUseCase, // ✅ Injetado
   ) {}
+
+  /**
+   * 🔍 Exibe um registro específico (Resolve o 404 do Frontend)
+   */
+  public async show(req: Request, res: Response): Promise<Response> {
+    const usuario = getAuthUser(req);
+    const { id } = req.params;
+
+    // Prioriza o condomínio da query ou o do usuário logado por segurança
+    const condominio_id = (req.query.condominio_id as string) || usuario.condominio_id;
+
+    if (!condominio_id)
+      throw new AppError("ID do condomínio não informado.", 400);
+
+    const result = await this.buscarPorIdUseCase.execute(id, condominio_id);
+
+    return res.json({ 
+      success: true, 
+      data: result 
+    });
+  }
 
   public async store(req: Request, res: Response): Promise<Response> {
     const usuario = getAuthUser(req);
-    // Pega do body, ou fallback para o condomínio do usuário logado
     const condominio_id = req.body.condominio_id || usuario.condominio_id;
 
     if (!condominio_id)

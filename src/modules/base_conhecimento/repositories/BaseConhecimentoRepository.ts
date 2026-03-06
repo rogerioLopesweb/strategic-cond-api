@@ -57,19 +57,29 @@ export class BaseConhecimentoRepository implements IBaseConhecimentoRepository {
     return new BaseConhecimento(result.rows[0]);
   }
 
-  async findById(
-    id: string,
-    condominio_id: string,
-  ): Promise<BaseConhecimento | null> {
+//Busca por id
+  async findById(id: string, condominio_id: string): Promise<BaseConhecimento | null> {
     const query = `
-      SELECT * FROM base_conhecimento_informacoes 
-      WHERE id = $1 AND condominio_id = $2 AND deletado_em IS NULL
+      SELECT 
+        id, condominio_id, titulo, categoria, descricao, 
+        id_user_cadastrou, id_user_alterou, 
+        data_cadastro, data_alteracao, deletado_em
+      FROM base_conhecimento_informacoes 
+      WHERE id = $1 
+        AND condominio_id = $2 
+        AND deletado_em IS NULL 
+      LIMIT 1
     `;
+  
     const result = await db.query(query, [id, condominio_id]);
-
-    if (result.rowCount === 0) return null;
+  
+    if (result.rows.length === 0) return null;
+  
+    // ✅ Como as colunas do SELECT batem com as propriedades da classe, 
+    // o Object.assign dentro do 'new' fará todo o trabalho pesado.
     return new BaseConhecimento(result.rows[0]);
   }
+
   // ====================================================================
   // 🧠 MÉTODO DE LISTAGEM COM FILTROS E PAGINAÇÃ O
   //

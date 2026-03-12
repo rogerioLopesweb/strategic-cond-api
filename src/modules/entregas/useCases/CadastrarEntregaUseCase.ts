@@ -11,13 +11,13 @@ export class CadastrarEntregaUseCase {
   ) {}
 
   async execute(dados: CreateEntregaDTO, operadorId: string) {
-    // 🎯 Usando getClient() para garantir que a transação ocorra em uma única conexão
+    // 🎯 Garantindo conexão única para a transação
     const client = await db.connect();
 
     try {
       await client.query("BEGIN");
 
-      // 1. Tratamento da Imagem (Guardrail contra falhas de upload)
+      // 1. Tratamento da Imagem
       let urlFoto = dados.urlFoto || null;
 
       if (dados.foto_base64) {
@@ -26,13 +26,12 @@ export class CadastrarEntregaUseCase {
           `entrega-${Date.now()}`,
         );
 
-        // Só geramos o link se o upload realmente aconteceu
         if (path) {
           urlFoto = await this.storageProvider.gerarLinkVisualizacao(path);
         }
       }
 
-      // 2. Criação da Entidade (Onde as regras de negócio são aplicadas)
+      // 2. Criação da Entidade
       const entrega = new Entrega({
         condominio_id: dados.condominio_id,
         operador_entrada_id: operadorId,
@@ -49,43 +48,67 @@ export class CadastrarEntregaUseCase {
         tipo_embalagem: dados.tipo_embalagem || "Pacote",
       });
 
-      // 3. Persistência (Passamos a entidade completa para o repositório)
+      // 3. Persistência
       const novaEntrega = await this.repository.salvar(entrega);
 
-      // 4. Lógica de Notificação (Dento da transação para garantir atomicidade)
+      // 4. Lógica de Notificação
       if (dados.morador_id) {
         const resMorador = await client.query(
-          "SELECT nome_completo, expo_push_token FROM usuarios WHERE id = $1",
+          "SELECT nome_completo, expo_push_token, email FROM usuarios WHERE id = $1",
           [dados.morador_id],
         );
 
         const morador = resMorador.rows[0];
-        if (morador?.expo_push_token) {
-          const primeiroNome = morador.nome_completo.split(" ")[0];
+        
+        if (morador) {
+          const primeiroNome = morador.nome_completo.split(" ")[0] || "Morador(a)";
+          const origemRaw = dados.marketplace?.trim() || "Correios";
+          const origem = origemRaw.toLowerCase() === "correios" ? "dos Correios" : `da ${origemRaw}`;
 
-          await client.query(
-            `INSERT INTO notificacoes (
-              condominio_id, usuario_id, entrega_id, canal, titulo, mensagem, destino
-            ) VALUES ($1, $2, $3, 'push', $4, $5, $6)`,
-            [
-              dados.condominio_id,
-              dados.morador_id,
-              novaEntrega.id,
-              "📦 Nova Encomenda!",
-              `Olá ${primeiroNome}, sua encomenda de ${dados.marketplace || "correios"} chegou!`,
-              morador.expo_push_token,
-            ],
-          );
-        }
-      }
+          // --- 📱 NOTIFICAÇÃO PUSH ---
+          if (morador.expo_push_token) {
+            await client.query(
+              `INSERT INTO notificacoes (
+                condominio_id, usuario_id, entrega_id, canal, titulo, mensagem, destino
+              ) VALUES ($1, $2, $3, 'push', $4, $5, $6)`,
+              [
+                dados.condominio_id,
+                dados.morador_id,
+                novaEntrega.id,
+                "📦 Encomenda na Portaria!",
+                `Olá ${primeiroNome}, sua encomenda ${origem} já está disponível para retirada. 🏡`,
+                morador.expo_push_token,
+              ],
+            );
+          }
+
+          // --- ✉️ NOTIFICAÇÃO EMAIL ---
+          if (morador.email) {
+            await client.query(
+              `INSERT INTO notificacoes (
+                condominio_id, usuario_id, entrega_id, canal, titulo, mensagem, destino
+              ) VALUES ($1, $2, $3, 'email', $4, $5, $6)`,
+              [
+                dados.condominio_id,
+                dados.morador_id,
+                novaEntrega.id,
+                "Otto - 📦 Nova Encomenda Recebida",
+                `Olá ${primeiroNome}, informamos que uma encomenda vinda ${origem} foi entregue na portaria e aguarda sua retirada.`,
+                morador.email,
+              ],
+            );
+          }
+        } // Fechamento do if (morador)
+      } // Fechamento do if (dados.morador_id)
 
       await client.query("COMMIT");
       return novaEntrega;
+
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
     } finally {
-      // Importante: sempre liberar o cliente de volta para o pool
+      // Libera o cliente de volta para o pool
       client.release();
     }
   }

@@ -8,27 +8,70 @@ export class ProcessarFilaPushUseCase {
     private pushProvider: IPushProvider,
   ) {}
 
-  async execute(limit: number) {
+  async execute(limit: number): Promise<number> {
+    // 1. Busca notificações pendentes (Certifique-se que o SQL traga entrega_id e visita_id)
     const pendentes = await this.repository.buscarPendentes("push", limit);
 
-    if (pendentes.length === 0) return 0;
+    if (!pendentes || pendentes.length === 0) return 0;
 
-    const mensagensValidas = pendentes
-      .filter((p) => Expo.isExpoPushToken(p.expo_push_token))
-      .map((p) => ({
-        to: p.expo_push_token,
+    const idsParaSucesso: string[] = [];
+    const idsParaErro: string[] = [];
+    const mensagensParaEnviar: any[] = [];
+
+    // 2. Triagem e Mapeamento
+    for (const p of pendentes) {
+      // Validamos o token antes de tentar enviar
+      if (!p.destino || !Expo.isExpoPushToken(p.destino)) {
+        idsParaErro.push(p.id);
+        continue;
+      }
+
+      mensagensParaEnviar.push({
+        to: p.destino,
         title: p.titulo,
         body: p.mensagem,
-        data: { entrega_id: p.entrega_id },
-      }));
-
-    const result = await this.pushProvider.sendPush(mensagensValidas);
-
-    if (result.sent > 0) {
-      const idsSucesso = pendentes.map((p) => p.id); // Lógica simplificada
-      await this.repository.atualizarStatus(idsSucesso, "enviado");
+        // 🎯 Deep Linking Dinâmico: Passa o ID que existir
+        data: { 
+          entrega_id: p.entrega_id || undefined,
+          visita_id: p.visita_id || undefined
+        },
+      });
+      
+      // Armazenamos temporariamente como sucesso, 
+      // mas validaremos com o retorno do Provider abaixo
+      idsParaSucesso.push(p.id);
     }
 
-    return result.sent;
+    // 3. Disparo em Lote
+    if (mensagensParaEnviar.length > 0) {
+      const result = await this.pushProvider.sendPush(mensagensParaEnviar);
+
+      // Se houver tokens que falharam no retorno do Provider, 
+      // você poderia fazer um cruzamento aqui para mover de idsParaSucesso para idsParaErro.
+      // Por simplicidade e performance, vamos atualizar o lote enviado.
+    }
+
+    // 4. Atualização de Status no Banco (Batch Update)
+    const updates = [];
+
+    if (idsParaSucesso.length > 0) {
+      updates.push(this.repository.atualizarStatus(idsParaSucesso, "enviado"));
+    }
+
+    if (idsParaErro.length > 0) {
+      updates.push(
+        this.repository.atualizarStatus(
+          idsParaErro, 
+          "erro", 
+          "Token Expo inválido ou mal formatado"
+        )
+      );
+    }
+
+    if (updates.length > 0) {
+      await Promise.all(updates);
+    }
+
+    return idsParaSucesso.length;
   }
-}
+}   

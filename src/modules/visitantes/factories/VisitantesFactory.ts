@@ -4,10 +4,18 @@ import { RegistrarSaidaUseCase } from "../useCases/RegistrarSaidaUseCase";
 import { ListarVisitasUseCase } from "../useCases/ListarVisitasUseCase";
 import { BuscarVisitantePorCpfUseCase } from "../useCases/BuscarVisitantePorCpfUseCase";
 
-// ✅ Importe o seu provider de Storage (ex: DiskStorageProvider ou S3StorageProvider)
+// --- Novos UseCases para CRM e Segurança ---
+import { ListarVisitantesPessoasUseCase } from "../useCases/ListarVisitantesPessoasUseCase";
+import { ObterDetalhesVisitanteUseCase } from "../useCases/ObterDetalhesVisitanteUseCase";
+import { CadastrarVisitanteUseCase } from "../useCases/CadastrarVisitanteUseCase";
+import { GerenciarRestricaoUseCase } from "../useCases/GerenciarRestricaoUseCase";
+
+// ✅ Provider de Storage
 import { DiskStorageProvider } from "@shared/providers/StorageProvider/implementations/DiskStorageProvider";
 
 export class VisitantesFactory {
+  // --- Gestão de Acessos (Movimentação) ---
+
   static makeRegistrarEntrada(): RegistrarEntradaUseCase {
     const repository = new VisitantesRepository();
 
@@ -31,5 +39,32 @@ export class VisitantesFactory {
   static makeBuscarPorCpf(): BuscarVisitantePorCpfUseCase {
     const repository = new VisitantesRepository();
     return new BuscarVisitantePorCpfUseCase(repository);
+  }
+
+  // --- Gestão de Pessoas (CRM e Segurança) ---
+
+  /** Para a lista geral de cadastros (Pessoas) */
+  static makeListarVisitantesPessoas(): ListarVisitantesPessoasUseCase {
+    const repository = new VisitantesRepository();
+    return new ListarVisitantesPessoasUseCase(repository);
+  }
+
+  /** O motor do Modal: Detalhes + Histórico + Restrições */
+  static makeObterDetalhesVisitante(): ObterDetalhesVisitanteUseCase {
+    const repository = new VisitantesRepository();
+    return new ObterDetalhesVisitanteUseCase(repository);
+  }
+
+  /** Cadastro fixo (pode ser usado por morador ou porteiro) */
+  static makeCadastrarVisitante(): CadastrarVisitanteUseCase {
+    const repository = new VisitantesRepository();
+    const storageProvider = new DiskStorageProvider(); // Foto é opcional mas prevista
+    return new CadastrarVisitanteUseCase(repository, storageProvider);
+  }
+
+  /** Ativa ou desativa bloqueios jurídicos/administrativos */
+  static makeGerenciarRestricao(): GerenciarRestricaoUseCase {
+    const repository = new VisitantesRepository();
+    return new GerenciarRestricaoUseCase(repository);
   }
 }

@@ -1,0 +1,92 @@
+{
+  "expo": {
+    "name": "StrategicCond",
+    "slug": "strategiccond",
+    "version": "1.0.0",
+    "orientation": "default",
+    "icon": "./assets/images/icon.png",
+    "scheme": "strategiccond",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "icon": "./assets/icons/icon-full-1024x1024.png",
+      "supportsTablet": true,
+      "bundleIdentifier": "com.strategicflow.strategiccond",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.strategicflow.strategiccond",
+      "googleServicesFile": "./google-services.json",
+      "versionCode": 1,
+      "softwareKeyboardLayoutMode": "pan",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icons/icon-foreground.png",
+        "backgroundImage": "./assets/icons/icon-background.png",
+        "backgroundColor": "#303f6b"
+      },
+      "permissions": [
+        "android.permission.NOTIFICATIONS",
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png",
+      "description": "Sistema de Gestão e Notificação de Encomendas - StrategicCond"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-navigation-bar",
+        {
+          "backgroundColor": "#0f172a",
+          "barStyle": "light",
+          "borderColor": "#1f2937",
+          "visibility": "visible",
+          "behavior": "inset-swipe",
+          "position": "relative"
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "O StrategicCond precisa acessar a câmera para ler QR Codes de saída."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "O aplicativo precisa acessar suas fotos para anexar a etiqueta.",
+          "cameraPermission": "O aplicativo precisa acessar a câmera para fotografar a etiqueta."
+        }
+      ],
+      "expo-notifications"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "15dbadf6-f1c0-439a-9ae1-77c46e8c13ec"
+      }
+    },
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "owner": "strategicflows-organization"
+  }
+}

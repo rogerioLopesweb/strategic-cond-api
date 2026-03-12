@@ -6,6 +6,7 @@ import { AtualizarUsuarioUseCase } from "../useCases/AtualizarUsuarioUseCase";
 import { AlterarStatusUsuarioUseCase } from "../useCases/AlterarStatusUsuarioUseCase";
 import { SalvarPushTokenUseCase } from "../useCases/SalvarPushTokenUseCase";
 import { DeletarUsuarioUseCase } from "../useCases/DeletarUsuarioUseCase";
+import { getAuthUser } from "@shared/providers/utils/getAuthUser";
 
 export class UsuarioController {
   constructor(
@@ -67,8 +68,9 @@ export class UsuarioController {
   }
 
   async atualizarToken(req: Request, res: Response): Promise<Response> {
-    const { usuario_id, token } = req.body;
-    await this.salvarPushToken.execute(usuario_id, token);
+    const { token } = req.body;
+    const usuario = getAuthUser(req);
+    await this.salvarPushToken.execute(usuario.id, token);
     return res.status(204).send();
   }
 

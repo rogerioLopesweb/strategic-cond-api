@@ -6,7 +6,7 @@ export class NotificacaoRepository {
       SELECT n.*, u.expo_push_token, u.email as email_usuario
       FROM notificacoes n
       JOIN usuarios u ON n.usuario_id = u.id
-      WHERE n.status = 'pendente' AND n.canal = $1
+      WHERE lower(n.status) = 'pendente' AND n.canal = $1
       LIMIT $2`;
     const res = await db.query(query, [canal, limit]);
     return res.rows;

@@ -8,46 +8,66 @@ export class ProcessarFilaEmailUseCase {
   ) {}
 
   async execute(limit: number): Promise<number> {
-    // 1. Procura notificações de e-mail pendentes no banco de dados
+    // 1. Busca notificações (Certifique-se que o Repo traga entrega_id e visita_id)
     const pendentes = await this.repository.buscarPendentes("email", limit);
 
-    if (pendentes.length === 0) {
+    if (!pendentes || pendentes.length === 0) {
       return 0;
     }
 
     const idsSucesso: string[] = [];
     const idsErro: string[] = [];
 
-    // 2. Processa cada e-mail da fila
+    // 2. Processamento Sequencial (Respeitando limites de SMTP)
     for (const notificacao of pendentes) {
       try {
+        // 🎯 Lógica de Identificação do Template (Pente Fino)
+        let templateEscolhido: 'default' | 'entrega' | 'visita' = 'default';
+        
+        if (notificacao.entrega_id) {
+          templateEscolhido = 'entrega';
+        } else if (notificacao.visita_id) {
+          templateEscolhido = 'visita';
+        }
+
         await this.mailProvider.sendMail({
-          to: notificacao.destino || notificacao.email_usuario,
+          to: notificacao.destino,
           subject: notificacao.titulo,
           body: notificacao.mensagem,
+          id_entrega: notificacao.entrega_id,
+          visita_id: notificacao.visita_id, // ✅ Agora enviamos o ID da visita também
+          template: templateEscolhido,     // ✅ Template dinâmico
         });
 
         idsSucesso.push(notificacao.id);
-      } catch (error) {
+      } catch (error: any) {
         console.error(
-          `[Email Error] Falha ao enviar ID ${notificacao.id}:`,
-          error,
+          `[Otto - Queue Error] Falha na notificação ${notificacao.id}:`,
+          error?.message || error,
         );
         idsErro.push(notificacao.id);
       }
     }
 
-    // 3. Atualiza os estados no banco de dados em lote (Batch Update)
+    // 3. Atualização de status em lote
+    const updates = [];
+
     if (idsSucesso.length > 0) {
-      await this.repository.atualizarStatus(idsSucesso, "enviado");
+      updates.push(this.repository.atualizarStatus(idsSucesso, "enviado"));
     }
 
     if (idsErro.length > 0) {
-      await this.repository.atualizarStatus(
-        idsErro,
-        "erro",
-        "Falha no provedor de SMTP",
+      updates.push(
+        this.repository.atualizarStatus(
+          idsErro,
+          "erro",
+          "Falha no processamento SMTP ou identidade de remetente",
+        )
       );
+    }
+
+    if (updates.length > 0) {
+      await Promise.all(updates);
     }
 
     return idsSucesso.length;

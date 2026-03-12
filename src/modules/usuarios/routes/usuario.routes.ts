@@ -114,7 +114,7 @@ router.post("/atualiza_status", verificarToken, (req, res) =>
 );
 
 registry.registerPath({
-  method: "post",
+  method: "put",
   path: "/api/usuarios/push-token",
   tags: ["Usuários"],
   security: [{ bearerAuth: [] }],
@@ -123,7 +123,7 @@ registry.registerPath({
   },
   responses: { 200: { description: "Token salvo" } },
 });
-router.post("/push-token", verificarToken, (req, res) =>
+router.put("/push-token", verificarToken, (req, res) =>
   controller.atualizarToken(req, res),
 );
 

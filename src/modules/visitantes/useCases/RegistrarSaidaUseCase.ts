@@ -3,27 +3,35 @@ import { AppError } from "@shared/errors/AppError";
 
 interface IRequest {
   id: string;
-  dataSaida: Date;
-  operador_id: string; // ✅ Adicionado para rastrear quem deu a baixa
+  operador_id: string; 
+  condominio_id: string;
 }
 
+/**
+ * RegistrarSaidaUseCase: Finaliza um ciclo de visita.
+ * Garante que a baixa seja auditada e restrita ao condomínio correto.
+ */
 export class RegistrarSaidaUseCase {
   constructor(private visitantesRepository: IVisitantesRepository) {}
 
-  async execute({ id, dataSaida, operador_id }: IRequest) {
+  async execute({ id, operador_id, condominio_id }: IRequest) {
+    // 🛡️ 1. Validações de Segurança de Contexto
     if (!id) {
-      throw new AppError("ID da visita é obrigatório.");
+      throw new AppError("O ID da visita é obrigatório para registrar a saída.", 400);
     }
 
-    if (!operador_id) {
-      throw new AppError(
-        "ID do operador é obrigatório para registrar a saída.",
-      );
+    if (!operador_id || !condominio_id) {
+      throw new AppError("Contexto de operador ou condomínio inválido.", 401);
     }
 
-    // ✅ Passando o operador_id para carimbar a auditoria no banco de dados
-    await this.visitantesRepository.registrarSaida(id, dataSaida, operador_id);
+    // 🚀 2. Execução no Repositório
+    // O Repository usa 'WHERE id = $1 AND condominio_id = $2' para blindagem total.
+    await this.visitantesRepository.registrarSaida(id, operador_id, condominio_id);
 
-    return { message: "Saída registrada com sucesso." };
+    return { 
+      success: true,
+      status: "finalizada",
+      message: "Saída registrada com sucesso no sistema." 
+    };
   }
 }

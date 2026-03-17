@@ -1,6 +1,6 @@
 import { IVisitantesRepository } from "../repositories/IVisitantesRepository";
 import { Visitante } from "../entities/Visitante";
-import { Visita } from "../entities/Visita";
+import { VisitanteAcessos } from "../entities/VisitanteAcessos";
 import { IStorageProvider } from "@shared/providers/StorageProvider/models/IStorageProvider";
 import { AppError } from "@shared/errors/AppError";
 
@@ -9,15 +9,15 @@ interface IEntradaRequest {
   cpf: string;
   rg?: string;
   foto_base64?: string;
-  tipo_padrao: "visitante" | "prestador" | "corretor";
-  empresa?: string; // Empresa do cadastro fixo
-  condominio_id: string;
+  tipo: "visitante" | "prestador" | "corretor";
+  empresa?: string;
+  condominio_id: string; // Contexto garantido pelo Controller/Token
   unidade_id?: string;
   autorizado_por_id?: string;
   placa_veiculo?: string;
-  empresa_prestadora?: string; // Empresa desta visita específica
+  empresa_prestadora?: string;
   observacoes?: string;
-  operador_id: string;
+  operador_id: string; 
 }
 
 export class RegistrarEntradaUseCase {
@@ -26,76 +26,87 @@ export class RegistrarEntradaUseCase {
     private storageProvider: IStorageProvider,
   ) {}
 
-  async execute(dados: IEntradaRequest): Promise<Visita> {
+  async execute(dados: IEntradaRequest): Promise<VisitanteAcessos> {
     const cpfLimpo = dados.cpf.replace(/\D/g, "");
-    let visitante = await this.visitantesRepository.findByCpf(cpfLimpo);
+    const { condominio_id, operador_id } = dados;
+    
+    // 🛡️ 1. CRIVO DE SEGURANÇA (Pente Fino)
+    // Buscamos o visitante no contexto do condomínio atual
+    let visitante = await this.visitantesRepository.findByCpf(cpfLimpo, condominio_id);
+    
+    if (visitante) {
+      // Verifica impedimentos ANTES de processar foto ou qualquer dado
+      const restricao = await this.visitantesRepository.verificarRestricaoAtiva(
+        String(visitante.id), 
+        condominio_id
+      );
 
-    // 📸 Gerenciamento de Foto
+      if (restricao) {
+        throw new AppError(
+          `ACESSO BLOQUEADO: Este visitante possui uma restrição ativa (${restricao.tipo_restricao}). Motivo: ${restricao.descricao}`,
+          403
+        );
+      }
+    }
+
+    // 📸 2. GESTÃO DE IMAGEM (Otimização de Storage)
     let urlFotoFinal: string | null = visitante?.props.foto_url || null;
 
-    if (dados.foto_base64) {
+    // Se o porteiro capturou uma nova foto no momento da entrada, fazemos o upload
+    if (dados.foto_base64 && dados.foto_base64.trim() !== "") {
       const fileName = `visitante-${cpfLimpo}-${Date.now()}`;
-      const path = await this.storageProvider.uploadFoto(
-        dados.foto_base64,
-        fileName,
-      );
+      const path = await this.storageProvider.uploadFoto(dados.foto_base64, fileName);
       if (path) {
         urlFotoFinal = await this.storageProvider.gerarLinkVisualizacao(path);
       }
     }
 
-    // 2. Fluxo de Criação ou Atualização do Visitante (Pessoa)
+    // 👤 3. GESTÃO DO PERFIL (CRM)
     if (!visitante) {
+      // Criação de novo perfil vinculado ao condomínio
       visitante = new Visitante({
+        condominio_id,
         nome_completo: dados.nome_completo,
         cpf: cpfLimpo,
         rg: dados.rg,
         foto_url: urlFotoFinal,
-        tipo_padrao: dados.tipo_padrao,
-        empresa: dados.empresa, // ✅ Agora salva no cadastro permanente
+        tipo: dados.tipo,
+        empresa: dados.empresa,
+        operador_cadastro_id: operador_id,
       });
 
       visitante = await this.visitantesRepository.createVisitante(visitante);
     } else {
-      const visitanteAtualizado = new Visitante(
-        {
-          nome_completo: dados.nome_completo,
-          cpf: cpfLimpo,
-          rg: dados.rg || visitante.props.rg,
-          foto_url: urlFotoFinal,
-          tipo_padrao: dados.tipo_padrao,
-          empresa: dados.empresa || visitante.props.empresa, // ✅ Mantém ou atualiza
-          created_at: visitante.props.created_at,
-        },
-        visitante.id,
-      );
+      // Atualização inteligente: Se mudou a empresa ou foto, atualizamos o cadastro mestre
+      visitante.atualizarDados({
+        nome_completo: dados.nome_completo,
+        rg: dados.rg || visitante.props.rg,
+        foto_url: urlFotoFinal,
+        tipo: dados.tipo,
+        empresa: dados.empresa || visitante.props.empresa
+      }, operador_id);
 
-      await this.visitantesRepository.updateVisitante(visitanteAtualizado);
-      visitante = visitanteAtualizado;
+      await this.visitantesRepository.updateVisitante(visitante, operador_id);
     }
 
     if (!visitante?.id) {
-      throw new AppError(
-        "Não foi possível gerar ou recuperar a identificação do visitante.",
-      );
+      throw new AppError("Falha crítica ao identificar ou registrar perfil do visitante.");
     }
 
-    // 3. Registrar a Visita (Evento de Acesso)
-    const visita = new Visita({
-      condominio_id: dados.condominio_id,
+    // 🚪 4. REGISTRO DO ACESSO (O Evento na Timeline)
+    const acesso = new VisitanteAcessos({
+      condominio_id,
       visitante_id: visitante.id,
       unidade_id: dados.unidade_id,
       autorizado_por_id: dados.autorizado_por_id,
       placa_veiculo: dados.placa_veiculo,
-      // ✅ Fallback estratégico: Se não informou empresa na visita, usa a do cadastro.
-      empresa_prestadora:
-        dados.empresa_prestadora || dados.empresa || visitante.props.empresa,
-      observacoes: dados.observacoes,
+      operador_entrada_id: operador_id,
+      // Prioridade de empresa: 1. Informada na entrada, 2. No cadastro, 3. Nula
+      empresa_prestadora: dados.empresa_prestadora || dados.empresa || visitante.props.empresa,
+      observacoes: dados.observacoes
     });
 
-    return await this.visitantesRepository.registrarEntrada(
-      visita,
-      dados.operador_id,
-    );
+    // Salva na tabela 'visitante_acessos' e dispara notificações
+    return await this.visitantesRepository.registrarEntrada(acesso, operador_id);
   }
 }

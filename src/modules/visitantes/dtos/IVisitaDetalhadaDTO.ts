@@ -1,4 +1,4 @@
-import { StatusVisita } from "../entities/Visita";
+import { StatusVisita } from "../entities/VisitanteAcessos";
 import { TipoVisitante } from "../entities/Visitante";
 
 export interface IVisitaDetalhadaDTO {

@@ -3,32 +3,39 @@ import { VisitantesFactory } from "../factories/VisitantesFactory";
 import { getAuthUser } from "@shared/providers/utils/getAuthUser";
 import { AppError } from "@shared/errors/AppError";
 
+/**
+ * VisitantesController: Interface de entrada para operações de CRM e Portaria.
+ * Gerencia o fluxo entre as requisições HTTP e as Regras de Negócio (UseCases).
+ */
 export class VisitantesController {
+  
   /**
-   * 🚪 Registro de Entrada (Acesso em tempo real)
+   * 🔍 Helper Privado: Captura o ID do condomínio de forma robusta e segura.
    */
+  private getCondominioId(req: Request): string {
+    const id = (req.headers["x-condominio-id"] as string) || 
+               (req.body.condominio_id as string) || 
+               (req.query.condominio_id as string);
+
+    if (!id) {
+      throw new AppError("O contexto do condomínio (ID) é obrigatório.", 400);
+    }
+    return id;
+  }
+
+  // =================================================================
+  // 1. GESTÃO DE ACESSOS (PORTARIA)
+  // =================================================================
+
+  /** 🚪 Registro de Entrada (Check-in) */
   async entrada(req: Request, res: Response) {
     const usuario = getAuthUser(req);
-    const registrarEntrada = VisitantesFactory.makeRegistrarEntrada();
+    const targetCondominioId = this.getCondominioId(req);
+    const useCase = VisitantesFactory.makeRegistrarEntrada();
 
-    const targetCondominioId =
-      (req.headers["x-condominio-id"] as string) || (req.body.condominio_id as string);
-
-    if (!targetCondominioId) {
-      throw new AppError("O ID do condomínio é obrigatório.", 400);
-    }
-
-    // Lógica de Autorização administrativa
-    let autorizadoPor = req.body.autorizado_por_id;
-    if (!autorizadoPor && !req.body.unidade_id) {
-      autorizadoPor = usuario.id;
-    }
-
-    const visita = await registrarEntrada.execute({
+    const visita = await useCase.execute({
       ...req.body,
-      // Se houver foto_base64 no body, o UseCase processará através do StorageProvider
       condominio_id: targetCondominioId,
-      autorizado_por_id: autorizadoPor,
       operador_id: usuario.id,
     });
 
@@ -39,163 +46,208 @@ export class VisitantesController {
     });
   }
 
-  /**
-   * 🏃 Registro de Saída
-   */
+  /** 🏃 Registro de Saída (Check-out) */
   async saida(req: Request, res: Response) {
     const usuario = getAuthUser(req);
     const { id } = req.params;
+    const targetCondominioId = this.getCondominioId(req);
+    const useCase = VisitantesFactory.makeRegistrarSaida();
 
-    const registrarSaida = VisitantesFactory.makeRegistrarSaida();
-
-    await registrarSaida.execute({
+    await useCase.execute({
       id,
-      dataSaida: new Date(),
+      condominio_id: targetCondominioId,
       operador_id: usuario.id,
     });
 
-    return res.status(200).json({ success: true, message: "Saída confirmada." });
+    return res.status(200).json({ success: true, message: "Saída registrada." });
   }
 
-  /**
-   * 📊 Listagem de Acessos (Timeline da Portaria)
-   */
-  async listar(req: Request, res: Response) {
+  /** 📊 Timeline de Acessos (Log Global) */
+  async listarAcessos(req: Request, res: Response) {
     const usuario = getAuthUser(req);
+    const targetCondominioId = this.getCondominioId(req);
+    const { page, limit, bloco, unidade, cpf, status } = req.query;
 
-    const {
-      page = 1,
-      limit = 10,
-      condominio_id,
-      bloco,
-      unidade,
-      cpf,
-      status,
-    } = req.query;
-
-    const targetCondominioId =
-      (req.headers["x-condominio-id"] as string) || (condominio_id as string);
-
-    if (!targetCondominioId) {
-      throw new AppError("O ID do condomínio é obrigatório para listagem.", 400);
-    }
-
-    const useCase = VisitantesFactory.makeListarVisitas();
-
-    const result = await useCase.execute(
-      {
-        condominio_id: targetCondominioId,
-        page: Number(page),
-        limit: Number(limit),
-        bloco: bloco as string,
-        unidade: unidade as string,
-        cpf: cpf as string,
-        status: status as string,
-      },
-      usuario.id,
-      usuario.perfil
-    );
+    const useCase = VisitantesFactory.makeListarVisitanteAcessos();
+    
+    const result = await useCase.execute({
+      condominio_id: targetCondominioId,
+      page: Number(page) || 1,
+      limit: Number(limit) || 12,
+      bloco: bloco as string,
+      unidade: unidade as string,
+      cpf: cpf as string,
+      status: status as string,
+      usuario_id: usuario.id, 
+      perfil: usuario.perfil
+    });
 
     return res.json(result);
   }
 
-  /**
-   * 🔍 Busca rápida por CPF (Com Verificação de Segurança)
-   */
+  /** 🔍 Busca rápida por CPF para o motor de entrada */
   async buscarPorCpf(req: Request, res: Response) {
     const { cpf } = req.params;
-    const targetCondominioId = req.headers["x-condominio-id"] as string;
+    const targetCondominioId = this.getCondominioId(req);
 
-    if (!cpf) throw new AppError("CPF é obrigatório.", 400);
-    if (!targetCondominioId) throw new AppError("Contexto do condomínio não identificado.", 400);
-
-    const useCase = VisitantesFactory.makeBuscarPorCpf();
+    const useCase = VisitantesFactory.makeBuscarVisitantePorCpf();
     const result = await useCase.execute(cpf, targetCondominioId);
 
     if (!result) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Visitante não encontrado. Prossiga para o cadastro." 
-      });
+      return res.status(404).json({ success: false, message: "Visitante não localizado." });
     }
 
     return res.status(200).json(result);
   }
 
   // =================================================================
-  // 👤 GESTÃO DE PESSOAS (CRM)
+  // 2. GESTÃO DE VISITANTES (CRM)
   // =================================================================
 
-  /**
-   * 👥 Listar Pessoas (Cadastros Únicos)
-   */
-  async listarPessoas(req: Request, res: Response) {
-    const { search, page = 1, limit = 10 } = req.query;
+  /** 📋 Lista a base mestra (Perfis) */
+  async listarVisitantes(req: Request, res: Response) {
+    const targetCondominioId = this.getCondominioId(req);
+    const { search, page, limit, tem_restricao } = req.query;
 
-    const useCase = VisitantesFactory.makeListarVisitantesPessoas();
+    const useCase = VisitantesFactory.makeListarVisitantes();
+    
     const result = await useCase.execute({
+      condominio_id: targetCondominioId,
       search: search as string,
-      page: Number(page),
-      limit: Number(limit)
+      tem_restricao: tem_restricao === "true" ? true : tem_restricao === "false" ? false : undefined,
+      page: Number(page) || 1,
+      limit: Number(limit) || 12
     });
 
     return res.json(result);
   }
 
-  /**
-   * 🖼️ Detalhes para o Modal (Dados + Histórico + Restrição)
-   */
+  /** 🗂️ Dossiê Completo (Dados para o Modal) */
   async detalhes(req: Request, res: Response) {
     const { id } = req.params;
-    const targetCondominioId = req.headers["x-condominio-id"] as string;
-
-    if (!targetCondominioId) throw new AppError("ID do condomínio ausente.", 400);
+    const targetCondominioId = this.getCondominioId(req);
 
     const useCase = VisitantesFactory.makeObterDetalhesVisitante();
     const detalhes = await useCase.execute(id, targetCondominioId);
-
+    
     return res.json(detalhes);
   }
 
-  /**
-   * 📝 Cadastro Fixo de Pessoa
-   */
-  async cadastrarPessoa(req: Request, res: Response) {
+  /** ➕ Criar perfil mestre */
+  async cadastrar(req: Request, res: Response) {
+    const usuario = getAuthUser(req);
+    const targetCondominioId = this.getCondominioId(req);
     const useCase = VisitantesFactory.makeCadastrarVisitante();
     
-    // Sem Multer: A foto vem no body como base64 ou url de storage temporário
-    const { foto_url, foto_base64 } = req.body;
-
     const visitante = await useCase.execute({
       ...req.body,
-      foto_url: foto_base64 || foto_url // Prioriza o base64 para processamento
+      condominio_id: targetCondominioId,
+      operador_id: usuario.id 
     });
 
     return res.status(201).json(visitante);
   }
 
-  /**
-   * 🚫 Gerenciar Restrição (Bloquear/Desbloquear)
-   */
-  async gerenciarRestricao(req: Request, res: Response) {
+  /** 📝 Editar perfil mestre */
+  async atualizar(req: Request, res: Response) {
+    const { id } = req.params;
+    const usuario = getAuthUser(req);
+    const targetCondominioId = this.getCondominioId(req);
+    const useCase = VisitantesFactory.makeUpdateVisitante();
+
+    const visitante = await useCase.execute({
+      id,
+      ...req.body,
+      condominio_id: targetCondominioId,
+      operador_id: usuario.id 
+    });
+
+    return res.status(200).json(visitante);
+  }
+
+  /** 🗑️ Excluir perfil mestre */
+  async excluir(req: Request, res: Response) {
+    const { id } = req.params;
+    const usuario = getAuthUser(req);
+    const targetCondominioId = this.getCondominioId(req);
+    const useCase = VisitantesFactory.makeExcluirVisitante();
+
+    await useCase.execute({ 
+      id, 
+      condominio_id: targetCondominioId,
+      operador_id: usuario.id 
+    });
+
+    return res.status(204).send();
+  }
+
+  // =================================================================
+  // 3. SEGURANÇA (RESTRIÇÕES)
+  // =================================================================
+
+  /** 🛡️ Registrar novo bloqueio */
+  async registrarRestricao(req: Request, res: Response) {
+    const usuario = getAuthUser(req);
     const { id: visitante_id } = req.params;
-    const { acao, tipo_restricao, descricao, instrucao_portaria } = req.body;
-    const targetCondominioId = req.headers["x-condominio-id"] as string;
-
-    if (!targetCondominioId) throw new AppError("ID do condomínio ausente.", 400);
-
-    const useCase = VisitantesFactory.makeGerenciarRestricao();
+    const targetCondominioId = this.getCondominioId(req);
+    const useCase = VisitantesFactory.makeRegistrarRestricao();
 
     await useCase.execute({
       visitante_id,
       condominio_id: targetCondominioId,
-      acao,
-      dados: { tipo_restricao, descricao, instrucao_portaria }
+      operador_id: usuario.id,
+      dados: req.body.dados
     });
 
-    return res.json({ 
-      success: true, 
-      message: acao === "registrar" ? "Restrição aplicada." : "Restrição removida." 
+    return res.status(201).json({ success: true, message: "Restrição aplicada." });
+  }
+
+  /** ✍️ Editar textos do bloqueio */
+  async atualizarRestricao(req: Request, res: Response) {
+    const usuario = getAuthUser(req);
+    const { id } = req.params; // ID da restrição
+    const targetCondominioId = this.getCondominioId(req);
+    const useCase = VisitantesFactory.makeUpdateRestricao();
+
+    await useCase.execute({
+      id,
+      condominio_id: targetCondominioId,
+      operador_id: usuario.id,
+      dados: req.body.dados
     });
+
+    return res.json({ success: true, message: "Restrição atualizada." });
+  }
+
+  /** 🔌 Desativar bloqueio (Resolver conflito) */
+  async cancelarRestricao(req: Request, res: Response) {
+    const usuario = getAuthUser(req);
+    const { id } = req.params; // ID da restrição
+    const targetCondominioId = this.getCondominioId(req);
+    const useCase = VisitantesFactory.makeCancelarRestricao();
+
+    await useCase.execute({
+      id,
+      condominio_id: targetCondominioId,
+      operador_id: usuario.id
+    });
+
+    return res.json({ success: true, message: "Bloqueio desativado." });
+  }
+
+  /** 🗑️ Excluir registro de restrição */
+  async excluirRestricao(req: Request, res: Response) {
+    const usuario = getAuthUser(req);
+    const { id } = req.params; // ID da restrição
+    const targetCondominioId = this.getCondominioId(req);
+    const useCase = VisitantesFactory.makeExcluirRestricao();
+
+    await useCase.execute({
+      id,
+      condominio_id: targetCondominioId,
+      operador_id: usuario.id
+    });
+
+    return res.status(204).send();
   }
 }

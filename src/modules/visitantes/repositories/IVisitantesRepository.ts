@@ -1,32 +1,81 @@
 import { Visitante } from "../entities/Visitante";
-import { Visita } from "../entities/Visita";
-import { IVisitaDetalhadaDTO } from "../dtos/IVisitaDetalhadaDTO";
-import { IVisitasPaginadasDTO } from "../dtos/IVisitasPaginadasDTO";
-import { ListVisitasFiltersDTO } from "../dtos/ListVisitasFiltersDTO";
-
-export { IVisitaDetalhadaDTO };
+import { VisitanteAcessos } from "../entities/VisitanteAcessos";
+import { IFiltersListVisitanteAcessosDTO } from "../dtos/IFiltersListVisitanteAcessosDTO";
+import { IFiltersVisitantesDTO } from "../dtos/IFiltersVisitantesDTO";
 
 export interface IVisitantesRepository {
-  // --- 👤 Gestão de Pessoas (Cadastro Fixo) ---
-  findByCpf(cpf: string): Promise<Visitante | null>;
-  findById(id: string): Promise<Visitante | null>; // Para o Modal de Detalhes
+  
+  // =================================================================
+  // 1. GESTÃO DE PESSOAS (CRM / VISITANTES)
+  // =================================================================
+  
+  /** 🎯 Busca perfil pelo ID validando o contexto do condomínio */
+  findById(id: string, condominio_id: string): Promise<Visitante | null>;
+  
+  /** 🎯 Busca perfil pelo CPF dentro do condomínio para o Check-in */
+  findByCpf(cpf: string, condominio_id: string): Promise<Visitante | null>;
+  
+  /** Listagem Global Paginada para a tela de "Base de Visitantes" */
+  listarVisitantes(filters: IFiltersVisitantesDTO): Promise<{ data: any[]; total: number }>;
+
+  /** Persistência inicial de um novo perfil (Já deve conter condominio_id na entidade) */
   createVisitante(visitante: Visitante): Promise<Visitante>;
-  updateVisitante(visitante: Visitante): Promise<void>;
-  
-  /** Lista paginada apenas das pessoas (Unique Visitors) */
-  listarVisitantes(filters: any): Promise<{ data: Visitante[], total: number }>;
 
-  // --- 🚫 Gestão de Restrições ---
-  verificarRestricao(visitanteId: string, condominioId: string): Promise<any | null>;
-  registrarRestricao(dados: any): Promise<void>;
-  removerRestricao(visitanteId: string, condominioId: string): Promise<void>;
+  /** Atualização de dados cadastrais (Auditado e protegido por contexto) */
+  updateVisitante(visitante: Visitante, operadorId: string): Promise<void>;
 
-  // --- 🚪 Gestão de Acessos (Histórico) ---
-  registrarEntrada(visita: Visita, operadorId: string): Promise<Visita>;
-  registrarSaida(visitaId: string, dataSaida: Date, operadorId: string): Promise<void>;
-  
-  /** Busca todas as vezes que este ID específico entrou no condomínio */
+  /** Exclusão lógica (Soft Delete) do perfil do visitante protegida por contexto */
+  delete(id: string, operadorId: string, condominio_id: string): Promise<void>;
+
+
+  // =================================================================
+  // 2. GESTÃO DE SEGURANÇA (RESTRIÇÕES 1:N)
+  // =================================================================
+
+  /** 🎯 Verifica se há alguma restrição ATIVA (ativo = true) para o Alerta Vermelho */
+  verificarRestricaoAtiva(visitanteId: string, condominioId: string): Promise<any | null>;
+
+  /** Listagem de todas as restrições (Aba "RESTRIÇÕES" do Modal) */
+  listarRestricoes(visitanteId: string, condominioId: string): Promise<any[]>;
+
+  /** Cria um novo registro de restrição no histórico */
+  registrarRestricao(dados: {
+    visitante_id: string;
+    condominio_id: string;
+    tipo_restricao: string;
+    descricao: string;
+    instrucao_portaria: string;
+    operador_cadastro_id: string;
+  }): Promise<void>;
+
+  /** ✍️ Atualiza os dados de uma restrição existente (Auditado) */
+  updateRestricao(id: string, condominioId: string, dados: {
+    tipo_restricao: string;
+    descricao: string;
+    instrucao_portaria: string;
+    operador_id: string;
+  }): Promise<void>;
+
+  /** 🔌 Desativa uma restrição (Status: Resolvido) com trava de segurança */
+  cancelarRestricao(id: string, operadorId: string, condominioId: string): Promise<void>;
+
+  /** 🗑️ Exclusão lógica (Soft Delete) de uma restrição do histórico */
+  excluirRestricao(id: string, operadorId: string, condominioId: string): Promise<void>;
+
+
+  // =================================================================
+  // 3. GESTÃO DE MOVIMENTAÇÃO (VISITAS / ACESSOS)
+  // =================================================================
+
+  /** Registra o check-in físico */
+  registrarEntrada(visita: VisitanteAcessos, operadorId: string): Promise<VisitanteAcessos>;
+
+  /** Registra o check-out validando o condomínio */
+  registrarSaida(visitaId: string, operadorId: string, condominioId: string): Promise<void>;
+
+  /** Listagem das últimas entradas para a Aba "ACESSOS" do Modal */
   listarHistoricoPorVisitante(visitanteId: string, condominioId: string): Promise<any[]>;
-  
-  listar(filters: ListVisitasFiltersDTO, usuarioId?: string, perfil?: string): Promise<IVisitasPaginadasDTO>;
+
+  /** Listagem geral da timeline da portaria (Filtros avançados) */
+  listarAcessos(filters: IFiltersListVisitanteAcessosDTO): Promise<{ data: any[]; pagination: any }>;
 }

@@ -8,7 +8,7 @@ export interface IRegistrarEntradaDataDTO {
   // É aqui que a string da câmera do celular vai viajar até o servidor
   foto_base64?: string | null; 
   
-  tipo_padrao: "visitante" | "prestador" | "corretor";
+  tipo: "visitante" | "prestador" | "corretor";
   
   // 🏢 Empresa fixa no cadastro do visitante (Ex: "Porto Seguro")
   empresa?: string | null; 

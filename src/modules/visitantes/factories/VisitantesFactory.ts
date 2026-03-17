@@ -1,28 +1,40 @@
 import { VisitantesRepository } from "../repositories/VisitantesRepository";
+
+// --- UseCases Operacionais (Acessos / Timeline) ---
 import { RegistrarEntradaUseCase } from "../useCases/RegistrarEntradaUseCase";
 import { RegistrarSaidaUseCase } from "../useCases/RegistrarSaidaUseCase";
-import { ListarVisitasUseCase } from "../useCases/ListarVisitasUseCase";
+import { ListarVisitanteAcessosUseCase } from "../useCases/ListarVisitanteAcessosUseCase";
 import { BuscarVisitantePorCpfUseCase } from "../useCases/BuscarVisitantePorCpfUseCase";
 
-// --- Novos UseCases para CRM e Segurança ---
-import { ListarVisitantesPessoasUseCase } from "../useCases/ListarVisitantesPessoasUseCase";
+// --- UseCases CRM (Base de Dados) ---
+import { ListarVisitantesUseCase } from "../useCases/ListarVisitantesUseCase";
 import { ObterDetalhesVisitanteUseCase } from "../useCases/ObterDetalhesVisitanteUseCase";
 import { CadastrarVisitanteUseCase } from "../useCases/CadastrarVisitanteUseCase";
-import { GerenciarRestricaoUseCase } from "../useCases/GerenciarRestricaoUseCase";
+import { UpdateVisitanteUseCase } from "../useCases/UpdateVisitanteUseCase";
+import { ExcluirVisitanteUseCase } from "../useCases/ExcluirVisitanteUseCase";
 
-// ✅ Provider de Storage
+// --- UseCases de Segurança (Gestão de Restrições 1:N) ---
+import { RegistrarRestricaoUseCase } from "../useCases/RegistrarRestricaoUseCase";
+import { UpdateRestricaoUseCase } from "../useCases/UpdateRestricaoUseCase";
+import { CancelarRestricaoUseCase } from "../useCases/CancelarRestricaoUseCase";
+import { ExcluirRestricaoUseCase } from "../useCases/ExcluirRestricaoUseCase";
+
+// --- Providers (Infraestrutura) ---
 import { DiskStorageProvider } from "@shared/providers/StorageProvider/implementations/DiskStorageProvider";
 
+/**
+ * VisitantesFactory: Centraliza a criação de UseCases do módulo de Visitantes.
+ * Garante a Injeção de Dependências correta para manter o desacoplamento e a testabilidade.
+ */
 export class VisitantesFactory {
-  // --- Gestão de Acessos (Movimentação) ---
+  
+  // =================================================================
+  // 1. GESTÃO DE ACESSOS (MOVIMENTAÇÃO / PORTARIA)
+  // =================================================================
 
   static makeRegistrarEntrada(): RegistrarEntradaUseCase {
     const repository = new VisitantesRepository();
-
-    // 📸 1. Precisamos instanciar o StorageProvider aqui
     const storageProvider = new DiskStorageProvider();
-
-    // 🚨 2. Agora passamos AMBOS para o UseCase
     return new RegistrarEntradaUseCase(repository, storageProvider);
   }
 
@@ -31,40 +43,72 @@ export class VisitantesFactory {
     return new RegistrarSaidaUseCase(repository);
   }
 
-  static makeListarVisitas(): ListarVisitasUseCase {
+  static makeListarVisitanteAcessos(): ListarVisitanteAcessosUseCase {
     const repository = new VisitantesRepository();
-    return new ListarVisitasUseCase(repository);
+    return new ListarVisitanteAcessosUseCase(repository);
   }
 
-  static makeBuscarPorCpf(): BuscarVisitantePorCpfUseCase {
+  static makeBuscarVisitantePorCpf(): BuscarVisitantePorCpfUseCase {
     const repository = new VisitantesRepository();
     return new BuscarVisitantePorCpfUseCase(repository);
   }
 
-  // --- Gestão de Pessoas (CRM e Segurança) ---
+  // =================================================================
+  // 2. GESTÃO DE PESSOAS (CRM / BASE MESTRE)
+  // =================================================================
 
-  /** Para a lista geral de cadastros (Pessoas) */
-  static makeListarVisitantesPessoas(): ListarVisitantesPessoasUseCase {
+  static makeListarVisitantes(): ListarVisitantesUseCase {
     const repository = new VisitantesRepository();
-    return new ListarVisitantesPessoasUseCase(repository);
+    return new ListarVisitantesUseCase(repository);
   }
 
-  /** O motor do Modal: Detalhes + Histórico + Restrições */
   static makeObterDetalhesVisitante(): ObterDetalhesVisitanteUseCase {
     const repository = new VisitantesRepository();
     return new ObterDetalhesVisitanteUseCase(repository);
   }
 
-  /** Cadastro fixo (pode ser usado por morador ou porteiro) */
   static makeCadastrarVisitante(): CadastrarVisitanteUseCase {
     const repository = new VisitantesRepository();
-    const storageProvider = new DiskStorageProvider(); // Foto é opcional mas prevista
+    const storageProvider = new DiskStorageProvider();
     return new CadastrarVisitanteUseCase(repository, storageProvider);
   }
 
-  /** Ativa ou desativa bloqueios jurídicos/administrativos */
-  static makeGerenciarRestricao(): GerenciarRestricaoUseCase {
+  static makeUpdateVisitante(): UpdateVisitanteUseCase {
     const repository = new VisitantesRepository();
-    return new GerenciarRestricaoUseCase(repository);
+    const storageProvider = new DiskStorageProvider();
+    return new UpdateVisitanteUseCase(repository, storageProvider);
+  }
+
+  static makeExcluirVisitante(): ExcluirVisitanteUseCase {
+    const repository = new VisitantesRepository();
+    return new ExcluirVisitanteUseCase(repository);
+  }
+
+  // =================================================================
+  // 3. SEGURANÇA (BLOQUEIOS E ALERTAS)
+  // =================================================================
+
+  /** 🛡️ Cria um novo alerta restritivo */
+  static makeRegistrarRestricao(): RegistrarRestricaoUseCase {
+    const repository = new VisitantesRepository();
+    return new RegistrarRestricaoUseCase(repository);
+  }
+
+  /** ✍️ Edita os detalhes de uma restrição existente */
+  static makeUpdateRestricao(): UpdateRestricaoUseCase {
+    const repository = new VisitantesRepository();
+    return new UpdateRestricaoUseCase(repository);
+  }
+
+  /** 🔌 Desativa o alerta (Marca como Resolvido) */
+  static makeCancelarRestricao(): CancelarRestricaoUseCase {
+    const repository = new VisitantesRepository();
+    return new CancelarRestricaoUseCase(repository);
+  }
+
+  /** 🗑️ Remove o registro da base de dados (Soft Delete) */
+  static makeExcluirRestricao(): ExcluirRestricaoUseCase {
+    const repository = new VisitantesRepository();
+    return new ExcluirRestricaoUseCase(repository);
   }
 }

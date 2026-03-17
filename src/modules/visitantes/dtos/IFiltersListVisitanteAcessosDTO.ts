@@ -1,5 +1,4 @@
-// Adicione esta interface no seu arquivo de DTOs ou no topo do repositório
-export interface ListVisitasFiltersDTO {
+export interface IFiltersListVisitanteAcessosDTO {
   condominio_id: string;
   bloco?: string;
   unidade?: string;
@@ -7,4 +6,6 @@ export interface ListVisitasFiltersDTO {
   status?: string;
   page?: number;
   limit?: number;
+  usuario_id?: string;
+  perfil?: string;
 }

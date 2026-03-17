@@ -1,49 +1,70 @@
-export type TipoVisitante = "visitante" | "prestador" | "corretor";
+import { TipoVisitante } from "../types/TipoVisitante";
 
 export interface IVisitanteProps {
+  // 🏢 Contexto Multi-tenant (Obrigatório)
+  condominio_id: string; 
+
   nome_completo: string;
   cpf: string;
   rg?: string | null;
   foto_url?: string | null;
-  tipo_padrao: TipoVisitante;
-  empresa?: string | null; // ✅ Adicionado para suportar prestadores/corretores
-  created_at: Date;
+  tipo: TipoVisitante;
+  empresa?: string | null;
+  
+  // 🛡️ Auditoria de Criação
+  data_cadastro: Date;
+  operador_cadastro_id: string;
+
+  // 🛡️ Auditoria de Atualização
+  data_atualizacao?: Date | null;
+  operador_atualizacao_id?: string | null;
 }
 
 export class Visitante {
-  // 🆔 O ID agora é opcional e readonly.
-  // Ele só terá valor quando vier do banco de dados (via Repositório).
   public readonly id?: string;
   public props: IVisitanteProps;
 
   constructor(
-    // Aceitamos as props sem o 'created_at', mas permitimos que ele seja passado (visto que vem do DB)
-    props: Omit<IVisitanteProps, "created_at"> & { created_at?: Date },
+    // ✅ Omitimos campos automáticos, mas condominio_id é OBRIGATÓRIO no nascimento
+    props: Omit<IVisitanteProps, "data_cadastro" | "data_atualizacao" | "operador_atualizacao_id"> & { 
+      data_cadastro?: Date;
+      data_atualizacao?: Date | null;
+      operador_atualizacao_id?: string | null;
+    },
     id?: string,
   ) {
     this.id = id;
     this.props = {
       ...props,
-      // Se created_at não for informado (objeto novo), geramos o Date atual.
-      created_at: props.created_at || new Date(),
+      data_cadastro: props.data_cadastro || new Date(),
+      data_atualizacao: props.data_atualizacao || null,
+      operador_atualizacao_id: props.operador_atualizacao_id || null,
     };
   }
 
-  // Getters para facilitar o acesso (Encapsulamento)
-  get nome() {
-    return this.props.nome_completo;
+  /**
+   * ✅ Regra de Negócio: Atualizar Dados do Perfil
+   * Note que omitimos o 'condominio_id', pois ele nunca muda.
+   */
+  public atualizarDados(
+    novosDados: Partial<Omit<IVisitanteProps, 
+      "condominio_id" | "data_cadastro" | "operador_cadastro_id" | "data_atualizacao" | "operador_atualizacao_id"
+    >>,
+    operador_id: string
+  ) {
+    this.props = {
+      ...this.props,
+      ...novosDados,
+      data_atualizacao: new Date(),
+      operador_atualizacao_id: operador_id,
+    };
   }
 
-  get cpf() {
-    return this.props.cpf;
-  }
-
-  get tipo() {
-    return this.props.tipo_padrao;
-  }
-
-  // ✅ Getter adicionado para facilitar o uso no UseCase/Service
-  get empresa() {
-    return this.props.empresa;
-  }
+  // Getters para facilitar o acesso e manter o código limpo
+  get condominioId() { return this.props.condominio_id; }
+  get nome() { return this.props.nome_completo; }
+  get cpf() { return this.props.cpf; }
+  get tipo() { return this.props.tipo; }
+  get empresa() { return this.props.empresa; }
+  get foto() { return this.props.foto_url; }
 }

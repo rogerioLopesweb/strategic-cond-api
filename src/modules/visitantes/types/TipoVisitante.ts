@@ -1,0 +1,1 @@
+export type TipoVisitante = "visitante" | "prestador" | "corretor" | "oficial";
